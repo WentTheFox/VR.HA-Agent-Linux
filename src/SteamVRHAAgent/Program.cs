@@ -134,17 +134,14 @@ if (!headless && hasDisplay)
     });
     _ = agent.Exited.ContinueWith(_ => App.Current.Exit());
 
-    // The agent's lifetime is handled by systemd (or the user), not the desktop's X11 session manager;
-    // Avalonia reads this variable directly and otherwise logs SMLib/ICELib errors.
-    if (Environment.GetEnvironmentVariable("AVALONIA_X11_USE_SESSION_MANAGEMENT") == null)
-        Environment.SetEnvironmentVariable("AVALONIA_X11_USE_SESSION_MANAGEMENT", "0");
-
     try
     {
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
-            .LogToTrace()
+            // Only Avalonia errors: its warnings include harmless noise such as X11 session management
+            // ("SMLib/ICELib reported a new error") when the agent runs as a systemd service.
+            .LogToTrace(Avalonia.Logging.LogEventLevel.Error)
             .StartWithClassicDesktopLifetime(args);
 
         // Avalonia leaves its SynchronizationContext on this thread, but its dispatcher no longer runs, so
