@@ -141,6 +141,10 @@ if (!headless && hasDisplay)
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
+            // Render the window on the CPU. It's small and mostly static, and GPU rendering can leave it blank
+            // or see-through when the GPU context is lost, which VR runtimes restarting can cause (seen with
+            // NVIDIA under XWayland). This also keeps the agent off the GPU while a VR app is using it.
+            .With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] })
             // Only Avalonia errors: its warnings include harmless noise such as X11 session management
             // ("SMLib/ICELib reported a new error") when the agent runs as a systemd service.
             .LogToTrace(Avalonia.Logging.LogEventLevel.Error)
