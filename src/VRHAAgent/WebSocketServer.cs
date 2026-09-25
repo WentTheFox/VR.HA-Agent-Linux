@@ -44,6 +44,7 @@ public sealed class WebSocketServer(string bindAddress, int port)
     private HttpListener? _listener;
 
     public Func<WebSocketClient, string, Task> MessageReceived { get; set; } = (_, _) => Task.CompletedTask;
+    public Action<WebSocketClient> ClientConnected { get; set; } = _ => { };
     public Action<WebSocketClient> ClientDisconnected { get; set; } = _ => { };
 
     public int ClientCount => _clients.Count;
@@ -154,6 +155,7 @@ public sealed class WebSocketServer(string bindAddress, int port)
             context.Request.RemoteEndPoint?.ToString() ?? "?");
         _clients[client.Id] = client;
         Log.Info($"Client connected: {client.Remote} ({_clients.Count} total)");
+        ClientConnected(client);
 
         try
         {

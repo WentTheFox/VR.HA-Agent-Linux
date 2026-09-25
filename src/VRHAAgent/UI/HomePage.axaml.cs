@@ -35,6 +35,15 @@ public partial class HomePage : UserControl
         var runtime = agent.ConnectedRuntime;
         RuntimeStatusText.Text = runtime == null ? "Disconnected" : $"Connected ({runtime})";
 
+        var display = agent.HeadsetDisplayState;
+        HeadsetDisplayText.Text = display.State switch
+        {
+            HeadsetDisplayState.Ok => $"OK ({display.Connector})",
+            HeadsetDisplayState.FallbackEdid => "Broken, power-cycle the headset",
+            HeadsetDisplayState.NotDetected => "Not detected",
+            _ => "Headset off",
+        };
+
         WebSocketStatusText.Text = agent.IsServerListening
             ? agent.ClientCount switch
             {

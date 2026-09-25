@@ -22,6 +22,14 @@
                 </ui:FASettingsExpander.Footer>
             </ui:FASettingsExpander>
 
+            <ui:FASettingsExpander Header="Headset Display"
+                                   Description="Whether the Valve Index's display was detected correctly"
+                                   IconSource="ShareScreen">
+                <ui:FASettingsExpander.Footer>
+                    <TextBlock x:Name="HeadsetDisplayText" VerticalAlignment="Center" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
             <ui:FASettingsExpander Header="WebSocket Server Status"
                                    Description="Status of the WebSocket Server that communicates with Home Assistant"
                                    IconSource="Globe">

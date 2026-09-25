@@ -49,6 +49,8 @@ The agent watches for running VR runtimes and connects to whichever one it finds
   text areas and channels. On Windows these needed the separate `SteamVR.NotifyPlugin.exe`. Here they
   are rendered in-process with OpenVR overlays.
 - Controller vibration (`vibrate_controller_left/right/both`) and `start_steamvr`.
+- Valve Index display health (`ok` / `fallback_edid` / ...), so Home Assistant can power-cycle the link
+  box when the headset's display comes up broken. See [below](#valve-index-display-health).
 - Forwarding of any OpenVR event (`register_event` / `unregister_event`).
 - Registers itself with SteamVR, so SteamVR starts it automatically.
 - The same window as the Windows app: a **Home** page with runtime, WebSocket server and notify plugin
@@ -120,6 +122,63 @@ journalctl --user -u vr-ha-agent -f
 You can also run it straight from the source tree:
 `dotnet run --project src/VRHAAgent -- --verbose`.
 
+## Valve Index display health
+
+Some Valve Index power-ups (seen with NVIDIA) leave the headset's DisplayPort connector "connected" but
+with a blank placeholder EDID instead of the Index's own. The VR runtime then can't find the headset
+display and nothing renders. Replugging the DisplayPort cable doesn't help; power-cycling the headset
+(link box) does. With the link box on a smart plug, Home Assistant can do that automatically.
+
+The agent reads the state from `/sys` every second, whether or not a VR runtime is running:
+
+| State           | Meaning                                                                          |
+|-----------------|----------------------------------------------------------------------------------|
+| `ok`            | A connector has the Index's EDID (manufacturer `VLV`, "Index HMD")               |
+| `fallback_edid` | The Index is on USB, but its display came up with a placeholder EDID (broken)    |
+| `not_detected`  | The Index is on USB, but no display for it is connected                          |
+| `headset_off`   | The Index isn't on USB (`28de:2300`)                                             |
+
+The Home page shows it, and it's sent to Home Assistant as a `headset_display` event on every change
+and whenever Home Assistant connects. The state message also carries the details (connector, EDID)
+under `headset_display`.
+
+The SteamVR integration forwards agent events to Home Assistant's event bus as `steamvr_event`, so a
+trigger-based template sensor turns them into an entity. Add this to `configuration.yaml`:
+
+```yaml
+template:
+  - triggers:
+      - trigger: event
+        event_type: steamvr_event
+        event_data:
+          type: headset_display
+    sensor:
+      - name: "VR headset display"
+        unique_id: vr_headset_display
+        state: "{{ trigger.event.data.data }}"
+```
+
+Then an automation can power-cycle the link box's plug (use your own switch entity):
+
+```yaml
+automation:
+  - alias: "Power-cycle the Index link box when its display comes up broken"
+    mode: single
+    triggers:
+      - trigger: state
+        entity_id: sensor.vr_headset_display
+        to: fallback_edid
+        for: "00:00:10"
+    actions:
+      - action: switch.turn_off
+        target:
+          entity_id: switch.index_link_box
+      - delay: "00:00:05"
+      - action: switch.turn_on
+        target:
+          entity_id: switch.index_link_box
+```
+
 ## Configuration
 
 Settings are changed in the app's Settings page and stored in `~/.config/vr-ha-agent/config.json`.
@@ -190,6 +249,7 @@ src/VRHAAgent/
   Monado/LibMonado.cs          libmonado bindings, loaded from the running service's build
   Monado/WayVR.cs              Notifications and haptics through WayVR
   RuntimeProcesses.cs          Detects running SteamVR / Monado / WiVRn / WayVR processes
+  HeadsetDisplay.cs            Valve Index display health from sysfs (EDID, USB)
   OpenVR/openvr_api.cs         Valve's C# OpenVR bindings
 packaging/vr-ha-agent.service
 packaging/package.sh           Builds a self-contained release archive

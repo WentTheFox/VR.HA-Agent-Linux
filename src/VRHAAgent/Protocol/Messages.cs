@@ -27,7 +27,7 @@ public class Event(string eventType, string eventData)
     [JsonProperty("event_data")] public string EventData = eventData;
 }
 
-public class State
+public record State
 {
     [JsonProperty("type")] public string Type => "state";
 
@@ -47,6 +47,9 @@ public class State
 
     [JsonProperty("right_controller")] public Controller? RightController { get; init; }
     [JsonProperty("left_controller")] public Controller? LeftController { get; init; }
+
+    /// <summary>Linux agent extension: whether the headset's display came up properly (see HeadsetDisplay).</summary>
+    [JsonProperty("headset_display")] public HeadsetDisplayState? HeadsetDisplay { get; init; }
 }
 
 public class Controller(bool isConnected = false, int? batteryPercentage = null, bool? isCharging = null)

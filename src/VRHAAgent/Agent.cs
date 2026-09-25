@@ -28,6 +28,8 @@ public sealed class Agent : IDisposable
     private TimeSpan _nextState = TimeSpan.Zero;
     private volatile bool _runtimeProcessRunning;
     private volatile bool _wayVRRunning;
+    private volatile HeadsetDisplayState _headsetDisplay = new();
+    private bool _headsetDisplayReported;
 
     public Agent(AgentConfig config)
     {
@@ -36,6 +38,7 @@ public sealed class Agent : IDisposable
         _server = new WebSocketServer(config.BindAddress, config.Port)
         {
             MessageReceived = HandleMessageAsync,
+            ClientConnected = OnClientConnected,
             ClientDisconnected = OnClientDisconnected,
         };
 
@@ -60,6 +63,8 @@ public sealed class Agent : IDisposable
 
     public bool IsServerListening => _server.IsListening;
     public int ClientCount => _server.ClientCount;
+
+    public HeadsetDisplayState HeadsetDisplayState => _headsetDisplay;
 
     public void Start()
     {
@@ -101,6 +106,7 @@ public sealed class Agent : IDisposable
             {
                 var processes = RuntimeProcesses.Scan();
                 _runtimeProcessRunning = processes.AnyRuntime;
+                UpdateHeadsetDisplay();
                 _wayVRRunning = processes.WayVR;
                 _vr.ConnectAllowed = _config.UseSteamVR && processes.SteamVR;
 
@@ -129,7 +135,7 @@ public sealed class Agent : IDisposable
 
                 sawSteamVRWhileConnected = false;
                 if (_config.UseMonado) _monado.Update(processes.Monado || processes.WiVRn);
-                _server.Broadcast(Serialize(_monado.GetState(_runtimeProcessRunning)));
+                _server.Broadcast(Serialize(_monado.GetState(_runtimeProcessRunning) with { HeadsetDisplay = _headsetDisplay }));
             } while (await timer.WaitForNextTickAsync(token));
         }
         catch (OperationCanceledException)
@@ -147,7 +153,7 @@ public sealed class Agent : IDisposable
         if (_server.ClientCount == 0) return;
         try
         {
-            _server.Broadcast(Serialize(_vr.GetState(_runtimeProcessRunning)));
+            _server.Broadcast(Serialize(_vr.GetState(_runtimeProcessRunning) with { HeadsetDisplay = _headsetDisplay }));
         }
         catch (Exception e)
         {
@@ -157,7 +163,11 @@ public sealed class Agent : IDisposable
 
     private void OnRuntimeStopped(string runtime)
     {
-        _server.Broadcast(Serialize(new State { IsSteamVRProcessRunning = _runtimeProcessRunning }));
+        _server.Broadcast(Serialize(new State
+        {
+            IsSteamVRProcessRunning = _runtimeProcessRunning,
+            HeadsetDisplay = _headsetDisplay,
+        }));
         if (_config.ExitWithSteamVR)
         {
             Log.Info($"Exiting because {runtime} quit (exitWithSteamVR is enabled)");
@@ -263,6 +273,30 @@ public sealed class Agent : IDisposable
     #endregion
 
     #region Messages
+
+    private const string HeadsetDisplayEvent = "headset_display";
+
+    /// <summary>
+    /// Sent as an event (not only in the state) because the Home Assistant integration forwards events to
+    /// its event bus as steamvr_event, which a trigger-based template sensor can turn into an entity.
+    /// </summary>
+    private void UpdateHeadsetDisplay()
+    {
+        var current = HeadsetDisplay.Read();
+        var previous = _headsetDisplay;
+        _headsetDisplay = current;
+        if (_headsetDisplayReported && current.State == previous.State && current.Connector == previous.Connector)
+            return;
+        _headsetDisplayReported = true;
+
+        var message = $"Headset display: {current.State}" + (current.Connector != null ? $" ({current.Connector})" : "");
+        if (current.State == HeadsetDisplayState.FallbackEdid) Log.Warn(message + ", power-cycle the headset to fix it");
+        else Log.Info(message);
+        _server.Broadcast(Serialize(new Event(HeadsetDisplayEvent, current.State)));
+    }
+
+    private void OnClientConnected(WebSocketClient client) =>
+        _ = client.SendAsync(Serialize(new Event(HeadsetDisplayEvent, _headsetDisplay.State)));
 
     private void OnClientDisconnected(WebSocketClient client)
     {
