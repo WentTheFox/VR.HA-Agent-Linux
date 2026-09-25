@@ -1,0 +1,15 @@
+[Unit]
+Description=Home Assistant Agent for SteamVR
+Documentation=https://github.com/Antoni-Czaplicki/SteamVR.HA
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=@EXEC@
+# With exitWithSteamVR=true (the default) the agent exits cleanly when SteamVR quits and SteamVR
+# starts it again through its manifest; failures are still restarted.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
