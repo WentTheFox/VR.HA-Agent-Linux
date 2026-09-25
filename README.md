@@ -3,15 +3,42 @@
 ![OS - Linux](https://img.shields.io/badge/OS-Linux-fcc624?style=for-the-badge&logo=linux&logoColor=black)
 
 A Linux port of [Home Assistant Agent for SteamVR](https://github.com/Antoni-Czaplicki/SteamVR.HA-Agent).
-It connects SteamVR to your Home Assistant instance. For the Home Assistant side, see the
+It connects SteamVR or [Monado](https://monado.freedesktop.org/) to your Home Assistant instance. For the Home Assistant side, see the
 [integration repo](https://github.com/Antoni-Czaplicki/SteamVR.HA).
 
 The Windows app is a WinUI 3 desktop app. This fork replaces it with a small headless daemon that
 uses the same WebSocket protocol, so the existing Home Assistant integration works without changes.
 
+## Supported runtimes
+
+The agent watches for running VR runtimes and connects to whichever one it finds:
+
+| Feature                                 | SteamVR               | Monado (incl. Envision builds)                         |
+|-----------------------------------------|-----------------------|--------------------------------------------------------|
+| Runtime and connection status           | ✅                    | ✅                                                     |
+| Running app                             | ✅                    | ✅ focused OpenXR client                               |
+| Controller battery and charging state   | ✅                    | ✅                                                     |
+| Headset activity level                  | ✅                    | ≈ `1` while an app is focused, otherwise `0`           |
+| Basic notifications (with image)        | ✅ SteamVR            | ✅ through [WayVR](https://github.com/wlx-team/wayvr)  |
+| Advanced (overlay) notifications        | ✅                    | ❌                                                     |
+| Controller vibration                    | ✅                    | ✅ through `wayvrctl haptics`                          |
+| OpenVR events                           | ✅                    | ❌                                                     |
+| `start_steamvr` command                 | launches SteamVR      | runs `startRuntimeCommand` (see config)                |
+| Auto-launch                             | SteamVR manifest      | run the agent as an always-on service                  |
+
+- **SteamVR** uses OpenVR. The agent only connects while `vrserver` is running, so it never launches
+  SteamVR itself. It also never loads xrizer when `openvrpaths.vrpath` points at xrizer.
+- **Monado** uses libmonado, Monado's management API, and only connects while `monado-service` is
+  running, so it never socket-activates Monado. libmonado must come from the same Monado build as
+  the running service. The agent looks for it next to the running `monado-service` binary (install
+  prefix or build tree, which covers Envision), then in system locations. Set `libMonadoPath` if it
+  isn't found. WiVRn (`wivrn-server`) is detected too, but untested.
+- Notifications and vibration on Monado need WayVR running. Notifications are sent as XSOverlay-style
+  messages to WayVR's listener on UDP `127.0.0.1:42069`.
+
 ## Features
 
-- Reports SteamVR status every second: whether the runtime process is running, OpenVR connection,
+- Reports runtime status every second: whether the runtime process is running, OpenVR connection,
   headset activity level, the running app, and controller battery and charging state.
 - Standard SteamVR notifications with an optional image (`imageData`, `imagePath` or `imageUrl`).
 - Advanced notifications (`customProperties.enabled`): image overlays with anchors (world, head, left
@@ -40,20 +67,15 @@ cd SteamVR.HA-Agent-Linux
 ./install.sh
 ```
 
+For Monado, or to keep the agent always available, use `./install.sh --enable`. This runs the agent
+as a user service at login, and it connects whenever SteamVR or Monado starts.
+
 This installs the app to `~/.local/share/steamvr-ha-agent/app` and links `~/.local/bin/steamvr-ha-agent`.
 It also installs the systemd user unit `steamvr-ha-agent.service`.
 
-Start SteamVR, then run the agent once with `systemctl --user start steamvr-ha-agent`. On first
-connection the agent registers a SteamVR app manifest with auto-launch enabled. After that, SteamVR
-starts the agent whenever SteamVR starts, and the agent exits when SteamVR quits.
-
-To keep the agent running all the time instead, for example so Home Assistant can use `start_steamvr`:
-
-```sh
-./install.sh --enable      # enables the service at login
-```
-
-Then set `"exitWithSteamVR": false` in the config.
+When the agent connects to SteamVR, it also registers a SteamVR app manifest with auto-launch enabled.
+If you only use SteamVR and don't enable the service, start the agent once while SteamVR is running.
+After that SteamVR launches it; set `"exitWithSteamVR": true` to have it exit with SteamVR again.
 
 Other commands:
 
@@ -74,10 +96,13 @@ You can also run it straight from the source tree:
 |-------------------------------|---------|------------------------------------------------------------------------------------------|
 | `port`                        | `8077`  | WebSocket port Home Assistant connects to                                                |
 | `bindAddress`                 | `"+"`   | Listen address; `"+"` means all interfaces, `"127.0.0.1"` means local only               |
-| `exitWithSteamVR`             | `true`  | Exit when SteamVR quits                                                                  |
+| `runtime`                     | `"auto"`| `"auto"`, `"steamvr"` or `"monado"`: which runtimes to connect to                        |
+| `exitWithSteamVR`             | `false` | Exit when the runtime (SteamVR or Monado) quits                                          |
+| `startRuntimeCommand`         | `null`  | Shell command for `start_steamvr`. Default: SteamVR via Steam, or `systemctl --user start monado.service` when `runtime` is `"monado"` (e.g. set it to `envision -S`) |
 | `autoLaunchWithSteamVR`       | `true`  | Register the SteamVR manifest so SteamVR launches the agent; `false` unregisters it      |
 | `enableAdvancedNotifications` | `true`  | Allow image overlay notifications                                                        |
 | `openVRLibraryPath`           | `null`  | Explicit path to `libopenvr_api.so`. You can also set the `OPENVR_API_PATH` env variable |
+| `libMonadoPath`               | `null`  | Explicit path to `libmonado.so`. You can also set the `LIBMONADO_PATH` env variable      |
 | `verboseLogging`              | `false` | Debug logging                                                                            |
 
 Command line options: `--config <path>`, `--port <port>`, `--verbose`, `--print-config`, `--version`, `--help`.
@@ -94,8 +119,9 @@ If a firewall is running, allow TCP port 8077 from your Home Assistant host. For
 - `event_data` in forwarded OpenVR events contains the tracked device index. The Windows app always
   sent the placeholder string `Valve.VR.VREvent_Data_t`.
 - Error responses now fill in `error.message`.
-- `is_steamvr_process_running` is also true when Monado (`monado-service`) or WiVRn
-  (`wivrn-server`) is running.
+- Monado support (see above). With Monado, `is_openvr_connected` means "connected to Monado", and
+  `is_steamvr_process_running` means "some VR runtime is running".
+- `exitWithSteamVR` is off by default because the agent is meant to run as an always-on service.
 - No crash reporting or telemetry. The Windows app sent crash reports to Sentry.
 
 ## Project layout
@@ -110,6 +136,10 @@ src/SteamVRHAAgent/
   VR/AdvancedNotifications.cs  Overlay-based image notifications
   VR/Images.cs                 Image loading and text drawing (ImageSharp)
   VR/SteamVRManifest.cs        SteamVR app manifest and launcher script
+  Monado/MonadoBackend.cs      Monado state via libmonado
+  Monado/LibMonado.cs          libmonado bindings, loaded from the running service's build
+  Monado/WayVR.cs              Notifications and haptics through WayVR
+  RuntimeProcesses.cs          Detects running SteamVR / Monado / WiVRn / WayVR processes
   OpenVR/openvr_api.cs         Valve's C# OpenVR bindings
 packaging/steamvr-ha-agent.service
 install.sh

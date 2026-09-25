@@ -1,34 +1,38 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Newtonsoft.Json;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SteamVRHAAgent.Monado;
 using SteamVRHAAgent.Protocol;
 using SteamVRHAAgent.VR;
 using Valve.VR;
 
 namespace SteamVRHAAgent;
 
+/// <summary>
+/// Bridges Home Assistant's WebSocket protocol to whichever VR runtime is running: SteamVR through OpenVR,
+/// or Monado through libmonado (with WayVR for notifications and haptics).
+/// </summary>
 public sealed class Agent : IDisposable
 {
     private static readonly TimeSpan StateInterval = TimeSpan.FromSeconds(1);
 
-    /// <summary>
-    /// Processes that mean a VR runtime is up. /proc comm names are truncated to 15 characters.
-    /// </summary>
-    private static readonly string[] RuntimeProcessNames =
-        ["vrserver", "vrmonitor", "vrcompositor", "monado-service", "wivrn-server"];
-
     private readonly AgentConfig _config;
     private readonly VRRuntime _vr = new();
+    private readonly MonadoBackend _monado;
     private readonly WebSocketServer _server;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly ConcurrentDictionary<EVREventType, ConcurrentDictionary<string, WebSocketClient>> _eventSubscriptions = new();
     private readonly TaskCompletionSource _exited = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private TimeSpan _nextState = TimeSpan.Zero;
     private volatile bool _runtimeProcessRunning;
+    private volatile bool _wayVRRunning;
 
     public Agent(AgentConfig config)
     {
         _config = config;
+        _monado = new MonadoBackend(config.LibMonadoPath);
         _server = new WebSocketServer(config.BindAddress, config.Port)
         {
             MessageReceived = HandleMessageAsync,
@@ -36,23 +40,24 @@ public sealed class Agent : IDisposable
         };
 
         _vr.Connected += OnVRConnected;
-        _vr.Disconnected += OnVRDisconnected;
+        _vr.Disconnected += () => OnRuntimeStopped("SteamVR");
         _vr.EventReceived += OnVREvent;
         _vr.Tick += now =>
         {
             _vr.Advanced.Update(now);
-            if (now >= _nextState) BroadcastState(now);
+            if (now >= _nextState) BroadcastVRState(now);
         };
+        _monado.Disconnected += () => OnRuntimeStopped("Monado");
     }
 
-    /// <summary>Completes when the agent decides to exit on its own (SteamVR quit with ExitWithSteamVR).</summary>
+    /// <summary>Completes when the agent decides to exit on its own (runtime quit with ExitWithSteamVR).</summary>
     public Task Exited => _exited.Task;
 
     public void Start()
     {
         _server.Start(_shutdown.Token);
         _vr.Start();
-        _ = ProcessWatchLoop(_shutdown.Token);
+        _ = WatchLoop(_shutdown.Token);
     }
 
     public async Task StopAsync()
@@ -61,70 +66,69 @@ public sealed class Agent : IDisposable
         await _shutdown.CancelAsync();
         await _server.StopAsync();
         _vr.Dispose();
+        _monado.Dispose();
     }
 
     public void Dispose()
     {
         _vr.Dispose();
+        _monado.Dispose();
         _shutdown.Dispose();
     }
 
-    #region State
-
-    private static bool IsRuntimeProcessRunning()
-    {
-        foreach (var name in RuntimeProcessNames)
-        {
-            var processes = Process.GetProcessesByName(name);
-            var found = processes.Length > 0;
-            foreach (var p in processes) p.Dispose();
-            if (found) return true;
-        }
-
-        return false;
-    }
+    #region Runtime detection and state
 
     /// <summary>
-    /// Runs off the VR thread, since scanning /proc is slow. While OpenVR is disconnected there are no VR
-    /// ticks, so this loop also sends the state updates.
+    /// Once a second: scan processes, connect/disconnect backends accordingly, and send state updates
+    /// (except while OpenVR is connected, when the VR thread sends them).
     /// </summary>
-    private async Task ProcessWatchLoop(CancellationToken token)
+    private async Task WatchLoop(CancellationToken token)
     {
         using var timer = new PeriodicTimer(StateInterval);
-        var sawProcessWhileConnected = false;
-        var missingCount = 0;
+        var sawSteamVRWhileConnected = false;
+        var steamVRMissingCount = 0;
         try
         {
             do
             {
-                _runtimeProcessRunning = IsRuntimeProcessRunning();
-                if (!_vr.IsConnected)
+                var processes = RuntimeProcesses.Scan();
+                _runtimeProcessRunning = processes.AnyRuntime;
+                _wayVRRunning = processes.WayVR;
+                _vr.ConnectAllowed = _config.UseSteamVR && processes.SteamVR;
+
+                if (_vr.IsConnected)
                 {
-                    sawProcessWhileConnected = false;
-                    _server.Broadcast(Serialize(new State { IsSteamVRProcessRunning = _runtimeProcessRunning }));
+                    // A crashed or killed SteamVR never sends VREvent_Quit, so notice it going away ourselves.
+                    if (processes.SteamVR)
+                    {
+                        sawSteamVRWhileConnected = true;
+                        steamVRMissingCount = 0;
+                    }
+                    else if (sawSteamVRWhileConnected && ++steamVRMissingCount >= 3)
+                    {
+                        Log.Warn("SteamVR process disappeared without quitting");
+                        sawSteamVRWhileConnected = false;
+                        await _vr.InvokeAsync(() => _vr.Disconnect(acknowledgeQuit: false));
+                    }
+
                     continue;
                 }
 
-                // A crashed or killed runtime never sends VREvent_Quit, so notice it going away ourselves.
-                if (_runtimeProcessRunning)
-                {
-                    sawProcessWhileConnected = true;
-                    missingCount = 0;
-                }
-                else if (sawProcessWhileConnected && ++missingCount >= 3)
-                {
-                    Log.Warn("VR runtime process disappeared without quitting");
-                    sawProcessWhileConnected = false;
-                    await _vr.InvokeAsync(() => _vr.Disconnect(acknowledgeQuit: false));
-                }
+                sawSteamVRWhileConnected = false;
+                if (_config.UseMonado) _monado.Update(processes.Monado || processes.WiVRn);
+                _server.Broadcast(Serialize(_monado.GetState(_runtimeProcessRunning)));
             } while (await timer.WaitForNextTickAsync(token));
         }
         catch (OperationCanceledException)
         {
         }
+        catch (Exception e)
+        {
+            Log.Error($"Runtime watcher crashed: {e}");
+        }
     }
 
-    private void BroadcastState(TimeSpan now)
+    private void BroadcastVRState(TimeSpan now)
     {
         _nextState = now + StateInterval;
         if (_server.ClientCount == 0) return;
@@ -138,25 +142,25 @@ public sealed class Agent : IDisposable
         }
     }
 
+    private void OnRuntimeStopped(string runtime)
+    {
+        _server.Broadcast(Serialize(new State { IsSteamVRProcessRunning = _runtimeProcessRunning }));
+        if (_config.ExitWithSteamVR)
+        {
+            Log.Info($"Exiting because {runtime} quit (exitWithSteamVR is enabled)");
+            _exited.TrySetResult();
+        }
+    }
+
     #endregion
 
-    #region VR lifecycle (VR thread)
+    #region SteamVR (VR thread)
 
     private void OnVRConnected()
     {
         _nextState = TimeSpan.Zero;
         if (_config.AutoLaunchWithSteamVR) RegisterManifest();
         else UnregisterManifest();
-    }
-
-    private void OnVRDisconnected()
-    {
-        _server.Broadcast(Serialize(new State { IsSteamVRProcessRunning = _runtimeProcessRunning }));
-        if (_config.ExitWithSteamVR)
-        {
-            Log.Info("Exiting because the VR runtime quit (exitWithSteamVR is enabled)");
-            _exited.TrySetResult();
-        }
     }
 
     private void OnVREvent(VREvent_t ev)
@@ -214,6 +218,12 @@ public sealed class Agent : IDisposable
         _server.Send(client, Serialize(new Response(nonce, success, code, message)));
     }
 
+    private void ReplyResult(WebSocketClient client, string nonce, string? error, string errorCode)
+    {
+        if (error == null) Reply(client, nonce);
+        else Reply(client, nonce, false, errorCode, error);
+    }
+
     private async Task HandleMessageAsync(WebSocketClient client, string json)
     {
         Payload payload;
@@ -231,12 +241,12 @@ public sealed class Agent : IDisposable
         var nonce = payload.customProperties.nonce;
         Log.Debug($"Received {payload.type} {payload.command} from {client.Remote}");
 
-        // Works without an OpenVR connection.
+        // Works without a runtime connection.
         if (payload is { type: "command", command: "start_steamvr" })
         {
             try
             {
-                StartSteamVR();
+                StartRuntime();
                 Reply(client, nonce);
             }
             catch (Exception e)
@@ -247,12 +257,22 @@ public sealed class Agent : IDisposable
             return;
         }
 
-        if (!_vr.IsConnected)
-        {
-            Reply(client, nonce, false, "steamvr_disconnected", "SteamVR is disconnected");
-            return;
-        }
+        if (_vr.IsConnected) await HandleSteamVRMessage(client, payload);
+        else if (_monado.IsConnected) await HandleMonadoMessage(client, payload);
+        else Reply(client, nonce, false, "steamvr_disconnected", "No VR runtime (SteamVR or Monado) is connected");
+    }
 
+    private static ETrackedControllerRole[]? VibrationRoles(string command) => command switch
+    {
+        "vibrate_controller_right" => [ETrackedControllerRole.RightHand],
+        "vibrate_controller_left" => [ETrackedControllerRole.LeftHand],
+        "vibrate_controller_both" => [ETrackedControllerRole.RightHand, ETrackedControllerRole.LeftHand],
+        _ => null,
+    };
+
+    private async Task HandleSteamVRMessage(WebSocketClient client, Payload payload)
+    {
+        var nonce = payload.customProperties.nonce;
         switch (payload.type)
         {
             case "notification" when payload.customProperties.enabled:
@@ -266,7 +286,24 @@ public sealed class Agent : IDisposable
                     "Custom notification is not enabled and basic message is empty");
                 break;
             case "command":
-                await HandleCommand(client, payload);
+                var roles = VibrationRoles(payload.command);
+                if (roles == null)
+                {
+                    Reply(client, nonce, false, "invalid_command", $"Unknown command '{payload.command}'");
+                    break;
+                }
+
+                // Legacy haptic pulses max out at ~4ms, so repeat them to get a noticeable buzz.
+                for (var i = 0; i < 20; i++)
+                {
+                    await _vr.InvokeAsync(() =>
+                    {
+                        foreach (var role in roles) _vr.TriggerHapticPulse(role, 3999);
+                    });
+                    await Task.Delay(5);
+                }
+
+                Reply(client, nonce);
                 break;
             case "register_event" or "unregister_event" when string.IsNullOrEmpty(payload.command):
                 Reply(client, nonce, false, "no_event_command", "No event type specified");
@@ -299,34 +336,64 @@ public sealed class Agent : IDisposable
         }
     }
 
-    private async Task HandleCommand(WebSocketClient client, Payload payload)
+    private async Task HandleMonadoMessage(WebSocketClient client, Payload payload)
     {
         var nonce = payload.customProperties.nonce;
-        ETrackedControllerRole[] roles = payload.command switch
+        switch (payload.type)
         {
-            "vibrate_controller_right" => [ETrackedControllerRole.RightHand],
-            "vibrate_controller_left" => [ETrackedControllerRole.LeftHand],
-            "vibrate_controller_both" => [ETrackedControllerRole.RightHand, ETrackedControllerRole.LeftHand],
-            _ => [],
-        };
+            case "notification" when payload.customProperties.enabled:
+                Reply(client, nonce, false, "unsupported_runtime",
+                    "Advanced notifications are only supported with SteamVR");
+                break;
+            case "notification" when !string.IsNullOrEmpty(payload.basicMessage):
+                if (!_wayVRRunning)
+                {
+                    Reply(client, nonce, false, "notification_error", "Notifications on Monado need WayVR running");
+                    break;
+                }
 
-        if (roles.Length == 0)
-        {
-            Reply(client, nonce, false, "invalid_command", $"Unknown command '{payload.command}'");
-            return;
+                string? icon = null;
+                try
+                {
+                    using var image = await Images.LoadAsync(payload);
+                    if (image != null) icon = Images.ToPngBase64(image, 128);
+                }
+                catch (Exception e)
+                {
+                    Reply(client, nonce, false, "image_read_error", $"Image Read Failure: {e.Message}");
+                }
+
+                var error = await WayVR.NotifyAsync(payload.basicTitle, payload.basicMessage, icon);
+                if (error != null || icon != null || !HasImage(payload))
+                    ReplyResult(client, nonce, error, "notification_error");
+                break;
+            case "notification":
+                Reply(client, nonce, false, "invalid_notification", "Basic message is empty");
+                break;
+            case "command":
+                var roles = VibrationRoles(payload.command);
+                if (roles == null)
+                {
+                    Reply(client, nonce, false, "invalid_command", $"Unknown command '{payload.command}'");
+                    break;
+                }
+
+                if (!_wayVRRunning)
+                {
+                    Reply(client, nonce, false, "haptics_error", "Controller vibration on Monado needs WayVR running");
+                    break;
+                }
+
+                var devices = roles.Select(r => r == ETrackedControllerRole.LeftHand ? 0 : 1);
+                ReplyResult(client, nonce, await WayVR.HapticsAsync(devices, 1f, 0.25f), "haptics_error");
+                break;
+            case "register_event" or "unregister_event":
+                Reply(client, nonce, false, "unsupported_runtime", "OpenVR events are only available with SteamVR");
+                break;
+            default:
+                Reply(client, nonce, false, "invalid_type", "Invalid payload type");
+                break;
         }
-
-        // Legacy haptic pulses max out at ~4ms, so repeat them to get a noticeable buzz.
-        for (var i = 0; i < 20; i++)
-        {
-            await _vr.InvokeAsync(() =>
-            {
-                foreach (var role in roles) _vr.TriggerHapticPulse(role, 3999);
-            });
-            await Task.Delay(5);
-        }
-
-        Reply(client, nonce);
     }
 
     private async Task PostNotification(WebSocketClient client, Payload payload)
@@ -345,8 +412,7 @@ public sealed class Agent : IDisposable
         }
 
         var error = await _vr.InvokeAsync(() => _vr.ShowNotification(payload.basicTitle, payload.basicMessage, image));
-        if (error != null) Reply(client, nonce, false, "notification_error", error);
-        else if (image != null || !HasImage(payload)) Reply(client, nonce);
+        if (error != null || image != null || !HasImage(payload)) ReplyResult(client, nonce, error, "notification_error");
     }
 
     private async Task PostAdvancedNotification(WebSocketClient client, Payload payload)
@@ -379,25 +445,36 @@ public sealed class Agent : IDisposable
         }
 
         var error = await _vr.InvokeAsync(() => _vr.Advanced.Enqueue(payload.customProperties, image));
-        if (error != null) Reply(client, nonce, false, "notification_error", error);
-        else Reply(client, nonce);
+        ReplyResult(client, nonce, error, "notification_error");
     }
 
     private static bool HasImage(Payload p) =>
         !string.IsNullOrEmpty(p.imageData) || !string.IsNullOrEmpty(p.imagePath) || !string.IsNullOrEmpty(p.imageUrl);
 
-    private static SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32> BlankCanvasFor(
-        IEnumerable<Payload.TextArea> areas)
+    private static Image<Rgba32> BlankCanvasFor(IEnumerable<Payload.TextArea> areas)
     {
         var width = Math.Clamp(areas.Max(a => a.xPositionPx + a.widthPx), 1, AdvancedNotifications.MaxImageDimension);
         var height = Math.Clamp(areas.Max(a => a.yPositionPx + a.heightPx), 1, AdvancedNotifications.MaxImageDimension);
-        return new SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>(width, height);
+        return new Image<Rgba32>(width, height);
     }
 
-    private static void StartSteamVR()
+    private void StartRuntime()
     {
-        // UseShellExecute goes through xdg-open, which hands steam:// URLs to the Steam client.
-        Process.Start(new ProcessStartInfo("steam://rungameid/250820") { UseShellExecute = true })?.Dispose();
+        var command = _config.StartRuntimeCommand;
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            if (_config.Runtime != "monado")
+            {
+                // UseShellExecute goes through xdg-open, which hands steam:// URLs to the Steam client.
+                Process.Start(new ProcessStartInfo("steam://rungameid/250820") { UseShellExecute = true })?.Dispose();
+                return;
+            }
+
+            command = "systemctl --user start monado.service";
+        }
+
+        Log.Info($"Starting VR runtime: {command}");
+        Process.Start(new ProcessStartInfo("/bin/sh") { ArgumentList = { "-c", command } })?.Dispose();
     }
 
     #endregion

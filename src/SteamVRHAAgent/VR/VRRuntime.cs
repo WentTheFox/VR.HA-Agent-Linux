@@ -27,6 +27,12 @@ public sealed class VRRuntime : IDisposable
     private EVRInitError _lastInitError = EVRInitError.None;
 
     public bool IsConnected { get; private set; }
+
+    /// <summary>
+    /// Only attempt VR_Init while this is set. The agent sets it when a SteamVR process is running, so
+    /// the client library never loads another runtime (e.g. xrizer, which would socket-activate Monado).
+    /// </summary>
+    public volatile bool ConnectAllowed;
     public AdvancedNotifications Advanced { get; }
 
     /// <summary>Raised on the VR thread after OpenVR connects.</summary>
@@ -83,7 +89,7 @@ public sealed class VRRuntime : IDisposable
 
             if (!IsConnected)
             {
-                if (Now >= _nextInitAttempt)
+                if (ConnectAllowed && Now >= _nextInitAttempt)
                 {
                     TryConnect();
                     _nextInitAttempt = Now + InitRetryInterval;

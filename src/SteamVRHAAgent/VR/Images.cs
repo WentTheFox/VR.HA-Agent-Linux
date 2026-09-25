@@ -53,6 +53,16 @@ public static class Images
         return new Rgba32Image(image.Width, image.Height, pixels);
     }
 
+    public static string ToPngBase64(Image<Rgba32> image, int maxDimension)
+    {
+        using var copy = image.Clone(ctx => ctx.Resize(new ResizeOptions
+        {
+            Mode = ResizeMode.Max,
+            Size = new Size(Math.Min(maxDimension, image.Width), Math.Min(maxDimension, image.Height)),
+        }));
+        return copy.ToBase64String(SixLabors.ImageSharp.Formats.Png.PngFormat.Instance).Split(',', 2)[1];
+    }
+
     public static void DrawTextAreas(Image<Rgba32> image, IEnumerable<Payload.TextArea> textAreas)
     {
         foreach (var area in textAreas)

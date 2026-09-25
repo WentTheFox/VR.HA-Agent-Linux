@@ -11,8 +11,20 @@ public class AgentConfig
     /// <summary>Address to listen on. "+" listens on all interfaces.</summary>
     public string BindAddress { get; set; } = "+";
 
-    /// <summary>Exit when SteamVR quits instead of waiting for it to start again.</summary>
-    public bool ExitWithSteamVR { get; set; } = true;
+    /// <summary>Which VR runtime(s) to connect to: "auto", "steamvr" or "monado".</summary>
+    public string Runtime { get; set; } = "auto";
+
+    /// <summary>
+    /// Exit when the VR runtime (SteamVR or Monado) quits instead of waiting for it to start again. Off by
+    /// default: the agent is meant to run as an always-on user service, since Monado has no way to launch it.
+    /// </summary>
+    public bool ExitWithSteamVR { get; set; }
+
+    /// <summary>
+    /// Shell command run for the start_steamvr command. Null picks a default based on <see cref="Runtime"/>:
+    /// SteamVR via Steam, or `systemctl --user start monado.service` for "monado".
+    /// </summary>
+    public string? StartRuntimeCommand { get; set; }
 
     /// <summary>Register a SteamVR application manifest so SteamVR starts the agent automatically.</summary>
     public bool AutoLaunchWithSteamVR { get; set; } = true;
@@ -22,6 +34,12 @@ public class AgentConfig
 
     /// <summary>Optional explicit path to libopenvr_api.so.</summary>
     public string? OpenVRLibraryPath { get; set; }
+
+    /// <summary>Optional explicit path to libmonado.so.</summary>
+    public string? LibMonadoPath { get; set; }
+
+    public bool UseSteamVR => Runtime is "auto" or "steamvr";
+    public bool UseMonado => Runtime is "auto" or "monado";
 
     public bool VerboseLogging { get; set; }
 

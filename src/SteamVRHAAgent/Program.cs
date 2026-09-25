@@ -2,7 +2,6 @@ using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using SteamVRHAAgent;
-using SteamVRHAAgent.VR;
 
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
 
@@ -66,6 +65,11 @@ catch (Exception e)
 }
 
 if (portOverride is { } p) config.Port = p;
+if (config.Runtime is not ("auto" or "steamvr" or "monado"))
+{
+    Log.Error($"Invalid runtime '{config.Runtime}' in config; use \"auto\", \"steamvr\" or \"monado\"");
+    return 1;
+}
 Log.Verbose = verbose || config.VerboseLogging;
 
 if (printConfig)
@@ -90,7 +94,7 @@ catch (IOException)
 using var instanceLockHandle = instanceLock;
 
 Log.Info($"Home Assistant Agent for SteamVR {version} starting (config: {configPath})");
-OpenVRLibrary.Install(config.OpenVRLibraryPath);
+NativeLibraries.Install(config.OpenVRLibraryPath);
 
 using var agent = new Agent(config);
 try

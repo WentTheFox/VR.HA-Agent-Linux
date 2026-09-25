@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Builds and installs the agent for the current user (no root needed).
 #
-#   ./install.sh               build + install, SteamVR starts the agent automatically
-#   ./install.sh --enable      also enable the systemd user service at login (always-on)
+#   ./install.sh               build + install (SteamVR can still launch the agent on demand)
+#   ./install.sh --enable      also enable the systemd user service at login (recommended, needed for Monado)
 #   ./install.sh uninstall     remove the app, service and SteamVR manifest (config is kept)
 #
 # Set SELF_CONTAINED=1 to bundle the .NET runtime instead of using the system one.
@@ -68,8 +68,9 @@ install_app() {
     cat <<EOF
 
 Next steps:
-  1. Start SteamVR, then start the agent once:  systemctl --user start $UNIT   (or just run: $APP_ID)
-     It registers itself with SteamVR, so from then on SteamVR launches it automatically.
+  1. Run the agent: ./install.sh --enable starts it now and at every login, and it connects to
+     SteamVR or Monado whenever one of them is running. Without --enable, start it once while
+     SteamVR runs (systemctl --user start $UNIT) and SteamVR will launch it from then on.
   2. Add the SteamVR integration in Home Assistant, pointing it at this machine on port 8077.
 
 Config: ${XDG_CONFIG_HOME:-$HOME/.config}/$APP_ID/config.json   Logs: journalctl --user -u $UNIT -f
