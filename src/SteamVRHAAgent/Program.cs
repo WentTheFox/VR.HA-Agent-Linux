@@ -7,7 +7,7 @@ using SteamVRHAAgent.UI;
 
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
 
-var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?";
+var version = Paths.Version;
 var configPath = Paths.DefaultConfigFile;
 int? portOverride = null;
 var verbose = false;

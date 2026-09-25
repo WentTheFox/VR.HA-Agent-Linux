@@ -46,5 +46,12 @@ public static class Paths
         }
     }
 
+    /// <summary>The product version, e.g. "0.3.0" or "0.3.0-ci.12" (without the +commit suffix).</summary>
+    public static string Version { get; } =
+        (System.Reflection.Assembly.GetExecutingAssembly()
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "?")
+        .Split('+')[0];
+
     public static string IconFile => Path.Combine(AppContext.BaseDirectory, "Assets", "icon.png");
 }

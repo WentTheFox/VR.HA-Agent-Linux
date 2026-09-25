@@ -30,7 +30,7 @@ public partial class SettingsPage : UserControl
         RuntimeComboBox.SelectedItem = RuntimeComboBox.Items.OfType<ComboBoxItem>()
             .FirstOrDefault(i => (string?)i.Tag == Config.Runtime) ?? RuntimeComboBox.Items[0];
         StartCommandBox.Text = Config.StartRuntimeCommand ?? "";
-        VersionText.Text = Assembly.GetExecutingAssembly().GetName().Version?.ToString(4);
+        VersionText.Text = Paths.Version;
 
         _ = InitStartWithLoginToggle();
 

@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Builds and installs the agent for the current user (no root needed).
+# Installs the agent for the current user (no root needed). From a release archive it installs the
+# prebuilt app next to this script; from a source checkout it builds with the .NET SDK first.
 #
-#   ./install.sh               build + install (SteamVR can still launch the agent on demand)
+#   ./install.sh               install (SteamVR can still launch the agent on demand)
 #   ./install.sh --enable      also enable the systemd user service at login (recommended, needed for Monado)
 #   ./install.sh uninstall     remove the app, service and SteamVR manifest (config is kept)
 #
-# Set SELF_CONTAINED=1 to bundle the .NET runtime instead of using the system one.
+# When building from source, set SELF_CONTAINED=1 to bundle the .NET runtime instead of using the system one.
 set -euo pipefail
 
 APP_ID=steamvr-ha-agent
@@ -23,7 +24,11 @@ install_app() {
     local enable=0
     [[ "${1:-}" == "--enable" ]] && enable=1
 
-    command -v dotnet >/dev/null || { echo "dotnet SDK not found (Arch: pacman -S dotnet-sdk)" >&2; exit 1; }
+    local prebuilt="$REPO_DIR/app"
+    if [[ ! -x "$prebuilt/$APP_ID" ]]; then
+        prebuilt=""
+        command -v dotnet >/dev/null || { echo "dotnet SDK not found (Arch: pacman -S dotnet-sdk)" >&2; exit 1; }
+    fi
 
     local was_active=0
     if have_systemd && systemctl --user is-active --quiet "$UNIT"; then
@@ -31,21 +36,27 @@ install_app() {
         systemctl --user stop "$UNIT"
     fi
 
-    local publish_args=(-c Release -o "$APP_DIR.new")
-    if [[ "${SELF_CONTAINED:-0}" == "1" ]]; then
-        case "$(uname -m)" in
-            x86_64) publish_args+=(-r linux-x64) ;;
-            aarch64) publish_args+=(-r linux-arm64) ;;
-            *) echo "Unsupported architecture for SELF_CONTAINED: $(uname -m)" >&2; exit 1 ;;
-        esac
-        publish_args+=(--self-contained true)
-    else
-        publish_args+=(--self-contained false)
-    fi
-
-    echo "Building..."
     rm -rf -- "$APP_DIR.new"
-    dotnet publish "$REPO_DIR/src/SteamVRHAAgent/SteamVRHAAgent.csproj" "${publish_args[@]}"
+    mkdir -p "$DATA_DIR"
+    if [[ -n "$prebuilt" ]]; then
+        echo "Installing prebuilt app..."
+        cp -a -- "$prebuilt" "$APP_DIR.new"
+    else
+        local publish_args=(-c Release -o "$APP_DIR.new")
+        if [[ "${SELF_CONTAINED:-0}" == "1" ]]; then
+            case "$(uname -m)" in
+                x86_64) publish_args+=(-r linux-x64) ;;
+                aarch64) publish_args+=(-r linux-arm64) ;;
+                *) echo "Unsupported architecture for SELF_CONTAINED: $(uname -m)" >&2; exit 1 ;;
+            esac
+            publish_args+=(--self-contained true)
+        else
+            publish_args+=(--self-contained false)
+        fi
+
+        echo "Building..."
+        dotnet publish "$REPO_DIR/src/SteamVRHAAgent/SteamVRHAAgent.csproj" "${publish_args[@]}"
+    fi
     rm -rf -- "$APP_DIR"
     mv -- "$APP_DIR.new" "$APP_DIR"
 

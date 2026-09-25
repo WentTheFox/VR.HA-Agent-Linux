@@ -68,14 +68,34 @@ The agent watches for running VR runtimes and connects to whichever one it finds
 
 ## Installation
 
+### From a release (recommended)
+
+Download `steamvr-ha-agent-<version>-linux-x64.tar.gz` (or `-linux-arm64`) from the
+[latest release](https://github.com/WentTheFox/SteamVR.HA-Agent-Linux/releases/latest). The builds are
+self-contained, so .NET isn't needed.
+
+```sh
+tar -xzf steamvr-ha-agent-*-linux-x64.tar.gz
+cd steamvr-ha-agent-*-linux-x64
+./install.sh --enable
+```
+
+To update, do the same with the newer archive. Your settings are kept.
+
+### From source
+
+Needs the .NET 10 SDK.
+
 ```sh
 git clone https://github.com/WentTheFox/SteamVR.HA-Agent-Linux.git
 cd SteamVR.HA-Agent-Linux
-./install.sh
+./install.sh --enable
 ```
 
-Then open **Home Assistant Agent for SteamVR** from your app menu. `./install.sh --enable` also turns on
-"Start with login", which you can toggle in Settings later. For Monado, keep "Start with login" on:
+### After installing
+
+Open **Home Assistant Agent for SteamVR** from your app menu. `--enable` turns on "Start with login",
+which you can toggle in Settings later. For Monado, keep "Start with login" on:
 unlike SteamVR, Monado can't launch the agent.
 
 This installs the app to `~/.local/share/steamvr-ha-agent/app`, links `~/.local/bin/steamvr-ha-agent`,
@@ -89,7 +109,8 @@ Other commands:
 
 ```sh
 ./install.sh uninstall                  # remove app, service and manifest; keeps config
-SELF_CONTAINED=1 ./install.sh           # bundle the .NET runtime
+SELF_CONTAINED=1 ./install.sh           # from source: bundle the .NET runtime
+packaging/package.sh linux-x64 0.3.0    # build a release archive into dist/
 journalctl --user -u steamvr-ha-agent -f
 ```
 
@@ -166,8 +187,22 @@ src/SteamVRHAAgent/
   RuntimeProcesses.cs          Detects running SteamVR / Monado / WiVRn / WayVR processes
   OpenVR/openvr_api.cs         Valve's C# OpenVR bindings
 packaging/steamvr-ha-agent.service
+packaging/package.sh           Builds a self-contained release archive
 install.sh
+.github/workflows/build.yml    CI: builds x64/arm64 on every push; publishes a release for v* tags
 ```
+
+## Releasing
+
+Bump `<Version>` in `src/SteamVRHAAgent/SteamVRHAAgent.csproj`, then push a matching tag:
+
+```sh
+git tag v0.3.0 && git push origin v0.3.0
+```
+
+CI builds both architectures and publishes a GitHub release with the archives and `SHA256SUMS`.
+Tags with a suffix, such as `v0.4.0-beta.1`, are published as pre-releases. Every other push uploads
+the archives as workflow artifacts.
 
 ## License
 
