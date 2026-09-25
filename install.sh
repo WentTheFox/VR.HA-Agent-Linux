@@ -9,7 +9,7 @@
 # When building from source, set SELF_CONTAINED=1 to bundle the .NET runtime instead of using the system one.
 set -euo pipefail
 
-APP_ID=steamvr-ha-agent
+APP_ID=vr-ha-agent
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/$APP_ID"
 APP_DIR="$DATA_DIR/app"
@@ -20,6 +20,34 @@ DESKTOP_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/applications/$APP_ID.desktop"
 
 have_systemd() { command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; }
 
+# The project used to be called "Home Assistant Agent for SteamVR" (steamvr-ha-agent). Replace such an
+# install: stop and remove its service, command, menu entry and files, and move its settings over.
+LEGACY_ID=steamvr-ha-agent
+migrate_legacy() {
+    local legacy_data="${XDG_DATA_HOME:-$HOME/.local/share}/$LEGACY_ID"
+    local legacy_config="${XDG_CONFIG_HOME:-$HOME/.config}/$LEGACY_ID"
+    local new_config="${XDG_CONFIG_HOME:-$HOME/.config}/$APP_ID"
+    local found=0
+
+    if have_systemd && [[ -f "$UNIT_DIR/$LEGACY_ID.service" ]]; then
+        found=1
+        systemctl --user disable --now "$LEGACY_ID.service" 2>/dev/null || true
+        rm -f -- "$UNIT_DIR/$LEGACY_ID.service"
+        systemctl --user daemon-reload
+    fi
+    local legacy_desktop="${XDG_DATA_HOME:-$HOME/.local/share}/applications/$LEGACY_ID.desktop"
+    if [[ -e "$BIN_DIR/$LEGACY_ID" || -e "$legacy_desktop" || -d "$legacy_data" ]]; then
+        found=1
+        rm -f -- "$BIN_DIR/$LEGACY_ID" "$legacy_desktop"
+        rm -rf -- "$legacy_data"
+    fi
+    if [[ -d "$legacy_config" && ! -e "$new_config" ]]; then
+        found=1
+        mv -- "$legacy_config" "$new_config"
+    fi
+    if (( found )); then echo "Replaced the old $LEGACY_ID install (settings kept)"; fi
+}
+
 install_app() {
     local enable=0
     [[ "${1:-}" == "--enable" ]] && enable=1
@@ -29,6 +57,8 @@ install_app() {
         prebuilt=""
         command -v dotnet >/dev/null || { echo "dotnet SDK not found (Arch: pacman -S dotnet-sdk)" >&2; exit 1; }
     fi
+
+    migrate_legacy
 
     local was_active=0
     if have_systemd && systemctl --user is-active --quiet "$UNIT"; then
@@ -55,7 +85,7 @@ install_app() {
         fi
 
         echo "Building..."
-        dotnet publish "$REPO_DIR/src/SteamVRHAAgent/SteamVRHAAgent.csproj" "${publish_args[@]}"
+        dotnet publish "$REPO_DIR/src/VRHAAgent/VRHAAgent.csproj" "${publish_args[@]}"
     fi
     rm -rf -- "$APP_DIR"
     mv -- "$APP_DIR.new" "$APP_DIR"
@@ -78,7 +108,7 @@ LAUNCHER
     cat > "$DESKTOP_FILE" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Home Assistant Agent for SteamVR
+Name=Home Assistant Agent for VR
 Comment=Connect SteamVR or Monado to Home Assistant
 Exec="$APP_DIR/open.sh"
 Icon=$APP_DIR/Assets/icon.png
@@ -109,7 +139,7 @@ DESKTOP
     cat <<EOF
 
 Next steps:
-  1. Open "Home Assistant Agent for SteamVR" from your app menu. Its settings match the Windows app:
+  1. Open "Home Assistant Agent for VR" from your app menu. Its settings match the Windows app:
      "Start with login" runs it at every login (same as ./install.sh --enable), and "Auto Start"
      lets SteamVR launch it. It connects to SteamVR or Monado whenever one of them is running.
   2. Add the SteamVR integration in Home Assistant, pointing it at this machine on port 8077.

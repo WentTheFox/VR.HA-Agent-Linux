@@ -30,7 +30,7 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME#v}"
           else
-            base="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/SteamVRHAAgent/SteamVRHAAgent.csproj)"
+            base="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/VRHAAgent/VRHAAgent.csproj)"
             version="$base-ci.$GITHUB_RUN_NUMBER"
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -43,11 +43,11 @@ jobs:
         if: matrix.rid == 'linux-x64'
         run: |
           tar -xzf dist/*.tar.gz -C dist
-          dist/steamvr-ha-agent-*/app/steamvr-ha-agent --version
+          dist/vr-ha-agent-*/app/vr-ha-agent --version
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: steamvr-ha-agent-${{ matrix.rid }}
+          name: vr-ha-agent-${{ matrix.rid }}
           path: dist/*.tar.gz
           if-no-files-found: error
 

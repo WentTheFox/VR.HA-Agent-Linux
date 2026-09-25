@@ -1,8 +1,9 @@
-# Home Assistant Agent for SteamVR (Linux)
+# Home Assistant Agent for VR (Linux)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](#license)
 ![OS - Linux](https://img.shields.io/badge/OS-Linux-fcc624?style=for-the-badge&logo=linux&logoColor=black)
 
-A Linux port of [Home Assistant Agent for SteamVR](https://github.com/Antoni-Czaplicki/SteamVR.HA-Agent).
+A Linux port of [Home Assistant Agent for SteamVR](https://github.com/Antoni-Czaplicki/SteamVR.HA-Agent),
+renamed because it works with Monado as well as SteamVR.
 It connects SteamVR or [Monado](https://monado.freedesktop.org/) to your Home Assistant instance. For the Home Assistant side, see the
 [integration repo](https://github.com/Antoni-Czaplicki/SteamVR.HA).
 
@@ -70,36 +71,38 @@ The agent watches for running VR runtimes and connects to whichever one it finds
 
 ### From a release (recommended)
 
-Download `steamvr-ha-agent-<version>-linux-x64.tar.gz` (or `-linux-arm64`) from the
-[latest release](https://github.com/WentTheFox/SteamVR.HA-Agent-Linux/releases/latest). The builds are
+Download `vr-ha-agent-<version>-linux-x64.tar.gz` (or `-linux-arm64`) from the
+[latest release](https://github.com/WentTheFox/VR.HA-Agent-Linux/releases/latest). The builds are
 self-contained, so .NET isn't needed.
 
 ```sh
-tar -xzf steamvr-ha-agent-*-linux-x64.tar.gz
-cd steamvr-ha-agent-*-linux-x64
+tar -xzf vr-ha-agent-*-linux-x64.tar.gz
+cd vr-ha-agent-*-linux-x64
 ./install.sh --enable
 ```
 
-To update, do the same with the newer archive. Your settings are kept.
+To update, do the same with the newer archive. Your settings are kept. This also works for installs
+from before the rename (0.3.x, `steamvr-ha-agent`): the installer removes the old service, command
+and menu entry and moves your settings to `~/.config/vr-ha-agent/`.
 
 ### From source
 
 Needs the .NET 10 SDK.
 
 ```sh
-git clone https://github.com/WentTheFox/SteamVR.HA-Agent-Linux.git
-cd SteamVR.HA-Agent-Linux
+git clone https://github.com/WentTheFox/VR.HA-Agent-Linux.git
+cd VR.HA-Agent-Linux
 ./install.sh --enable
 ```
 
 ### After installing
 
-Open **Home Assistant Agent for SteamVR** from your app menu. `--enable` turns on "Start with login",
+Open **Home Assistant Agent for VR** from your app menu. `--enable` turns on "Start with login",
 which you can toggle in Settings later. For Monado, keep "Start with login" on:
 unlike SteamVR, Monado can't launch the agent.
 
-This installs the app to `~/.local/share/steamvr-ha-agent/app`, links `~/.local/bin/steamvr-ha-agent`,
-adds an app menu entry, and installs the systemd user unit `steamvr-ha-agent.service`. Launching the
+This installs the app to `~/.local/share/vr-ha-agent/app`, links `~/.local/bin/vr-ha-agent`,
+adds an app menu entry, and installs the systemd user unit `vr-ha-agent.service`. Launching the
 app while it's already running brings its window to the front.
 
 With "Auto Start" on (the default), the agent registers a SteamVR app manifest the first time it
@@ -111,15 +114,15 @@ Other commands:
 ./install.sh uninstall                  # remove app, service and manifest; keeps config
 SELF_CONTAINED=1 ./install.sh           # from source: bundle the .NET runtime
 packaging/package.sh linux-x64 0.3.0    # build a release archive into dist/
-journalctl --user -u steamvr-ha-agent -f
+journalctl --user -u vr-ha-agent -f
 ```
 
 You can also run it straight from the source tree:
-`dotnet run --project src/SteamVRHAAgent -- --verbose`.
+`dotnet run --project src/VRHAAgent -- --verbose`.
 
 ## Configuration
 
-Settings are changed in the app's Settings page and stored in `~/.config/steamvr-ha-agent/config.json`.
+Settings are changed in the app's Settings page and stored in `~/.config/vr-ha-agent/config.json`.
 If you edit that file by hand, do it while the app is closed:
 
 | Key                           | Default | Description                                                                              |
@@ -153,7 +156,7 @@ sudo firewall-cmd --permanent --add-port=8077/tcp && sudo firewall-cmd --reload 
 ## Differences from the Windows app
 
 - "Start with Windows" is "Start with login" (the systemd user service), and "Auto Start" doesn't ask
-  where to save the manifest; it lives in `~/.local/share/steamvr-ha-agent/`.
+  where to save the manifest; it lives in `~/.local/share/vr-ha-agent/`.
 - The Notification editor page opens the editor in your browser instead of an embedded WebView.
 - Settings has two extra Linux-only entries: VR Runtime and Start runtime command.
 - Advanced notifications are built in rather than provided by a separate plugin. The "Notify Plugin
@@ -170,7 +173,7 @@ sudo firewall-cmd --permanent --add-port=8077/tcp && sudo firewall-cmd --reload 
 ## Project layout
 
 ```
-src/SteamVRHAAgent/
+src/VRHAAgent/
   Program.cs                   CLI, startup, signal handling
   SingleInstance.cs            One instance per user; a second launch activates the running one
   UI/                          Avalonia window (Home, Notification editor, Settings) and tray icon
@@ -186,7 +189,7 @@ src/SteamVRHAAgent/
   Monado/WayVR.cs              Notifications and haptics through WayVR
   RuntimeProcesses.cs          Detects running SteamVR / Monado / WiVRn / WayVR processes
   OpenVR/openvr_api.cs         Valve's C# OpenVR bindings
-packaging/steamvr-ha-agent.service
+packaging/vr-ha-agent.service
 packaging/package.sh           Builds a self-contained release archive
 install.sh
 .github/workflows/build.yml    CI: builds x64/arm64 on every push; publishes a release for v* tags
@@ -194,7 +197,7 @@ install.sh
 
 ## Releasing
 
-Bump `<Version>` in `src/SteamVRHAAgent/SteamVRHAAgent.csproj`, then push a matching tag:
+Bump `<Version>` in `src/VRHAAgent/VRHAAgent.csproj`, then push a matching tag:
 
 ```sh
 git tag v0.3.0 && git push origin v0.3.0

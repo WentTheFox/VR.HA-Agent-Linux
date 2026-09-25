@@ -1,0 +1,12 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="VRHAAgent.UI.NotificationEditorPage">
+    <StackPanel Margin="16" Spacing="12">
+        <TextBlock Text="Notification Editor" FontSize="28" FontWeight="SemiBold" />
+        <TextBlock TextWrapping="Wrap"
+                   Text="Design advanced notifications (image overlays with animations) in the OpenVR Overlay Pipe editor. It connects to this agent's WebSocket port." />
+        <TextBlock TextWrapping="Wrap" Opacity="0.7"
+                   Text="Advanced notifications are shown with SteamVR only." />
+        <Button Classes="accent" Content="Open Notification Editor" Click="OpenEditor_OnClick" />
+    </StackPanel>
+</UserControl>

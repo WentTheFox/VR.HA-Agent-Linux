@@ -1,0 +1,155 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             x:Class="VRHAAgent.UI.SettingsPage">
+    <UserControl.Styles>
+        <Style Selector="TextBlock.SettingsSectionHeader">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="1,30,0,6" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Spacing="4" Margin="16">
+            <TextBlock Text="Settings" Margin="0,0,0,16" FontSize="28" FontWeight="SemiBold" />
+
+            <ui:FASettingsExpander Header="Port"
+                                   Description="Chose a port to use for WebSocket. The default port is 8077."
+                                   IconSource="Globe">
+                <ui:FASettingsExpander.Footer>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <ui:FANumberBox x:Name="PortBox" Minimum="1" Maximum="65535" MinWidth="110"
+                                        KeyDown="PortBox_OnKeyDown" />
+                        <Button x:Name="SavePortButton" Classes="accent" Content="Save" Click="SavePortButton_OnClick" />
+                    </StackPanel>
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander Header="Launch minimized" Description="Launch the app minimized."
+                                   IconSource="FullScreenMinimize">
+                <ui:FASettingsExpander.Footer>
+                    <ToggleSwitch x:Name="LaunchMinimizedToggle" IsCheckedChanged="LaunchMinimized_OnToggled" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander Header="Always on top" Description="Put the app on top of all other windows."
+                                   IconSource="Pin">
+                <ui:FASettingsExpander.Footer>
+                    <ToggleSwitch x:Name="AlwaysOnTopToggle" IsCheckedChanged="AlwaysOnTop_OnToggled" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander Header="Enable Tray Icon" Description="Minimize to tray instead of taskbar."
+                                   IconSource="OpenPane">
+                <ui:FASettingsExpander.Footer>
+                    <ToggleSwitch x:Name="EnableTrayToggle" IsCheckedChanged="EnableTray_OnToggled" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander x:Name="StartWithLoginCard"
+                                   Header="Start with login"
+                                   Description="Automatically start the app when you log in."
+                                   IconSource="Contact">
+                <ui:FASettingsExpander.Footer>
+                    <ToggleSwitch x:Name="StartWithLoginToggle" IsCheckedChanged="StartWithLogin_OnToggled" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander Header="Exit with SteamVR" Description="Close the app when SteamVR (or Monado) is closed."
+                                   IconSource="LeaveChat">
+                <ui:FASettingsExpander.Footer>
+                    <ToggleSwitch x:Name="ExitWithSteamVRToggle" IsCheckedChanged="ExitWithSteamVR_OnToggled" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander Header="Advanced Notifications"
+                                   Description="Advanced notifications allow you to send your own images combined with animations to your VR headset."
+                                   IconSource="Message">
+                <ui:FASettingsExpander.Footer>
+                    <ToggleSwitch x:Name="EnableNotifyPluginToggle" IsCheckedChanged="EnableNotifyPlugin_OnToggled" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander x:Name="AutoStartExpander"
+                                   Header="Auto Start"
+                                   Description="Open the app when SteamVR is started."
+                                   IconSource="Play">
+                <ui:FASettingsExpander.Footer>
+                    <ToggleSwitch x:Name="AutoStartToggle" IsCheckedChanged="AutoStart_OnToggled" />
+                </ui:FASettingsExpander.Footer>
+                <ui:FASettingsExpanderItem>
+                    <ui:FAInfoBar x:Name="AutoStartInfoBar"
+                                  Title="Placeholder"
+                                  IsIconVisible="False"
+                                  IsClosable="False"
+                                  IsOpen="False"
+                                  Severity="Informational">
+                        <ui:FAInfoBar.ActionButton>
+                            <Button x:Name="AutoStartInfoBarActionButton"
+                                    IsVisible="False"
+                                    Content="Try again"
+                                    Click="AutoStartInfoBar_ActionButton_OnClick" />
+                        </ui:FAInfoBar.ActionButton>
+                    </ui:FAInfoBar>
+                </ui:FASettingsExpanderItem>
+                <ui:FASettingsExpanderItem x:Name="ExportManifestCard"
+                                           Content="Register Manifest"
+                                           Description="To allow for the autostart feature to work, the app registers a manifest with SteamVR. It is stored in ~/.local/share/vr-ha-agent; deleting it disables the autostart feature. SteamVR needs to be running to register it."
+                                           IconSource="Save">
+                    <ui:FASettingsExpanderItem.Footer>
+                        <Button x:Name="SaveManifestButton" Content="Save Manifest" Click="SaveManifestButton_OnClick" />
+                    </ui:FASettingsExpanderItem.Footer>
+                </ui:FASettingsExpanderItem>
+            </ui:FASettingsExpander>
+
+            <!-- Linux-only settings -->
+            <ui:FASettingsExpander Header="VR Runtime"
+                                   Description="Which VR runtime to connect to. Automatic uses whichever of SteamVR or Monado is running."
+                                   IconSource="Games">
+                <ui:FASettingsExpander.Footer>
+                    <ComboBox x:Name="RuntimeComboBox" MinWidth="140" SelectionChanged="Runtime_OnSelectionChanged">
+                        <ComboBoxItem Content="Automatic" Tag="auto" />
+                        <ComboBoxItem Content="SteamVR" Tag="steamvr" />
+                        <ComboBoxItem Content="Monado" Tag="monado" />
+                    </ComboBox>
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander Header="Start runtime command"
+                                   Description="Command Home Assistant's &quot;Start SteamVR&quot; runs. Leave empty for the default (SteamVR through Steam, or the Monado service when the runtime is Monado), e.g. envision -S."
+                                   IconSource="Code">
+                <ui:FASettingsExpander.Footer>
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <TextBox x:Name="StartCommandBox" MinWidth="180" PlaceholderText="Default" />
+                        <Button x:Name="SaveStartCommandButton" Content="Save" Click="SaveStartCommand_OnClick" />
+                    </StackPanel>
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <TextBlock Classes="SettingsSectionHeader" Text="About" />
+
+            <ui:FASettingsExpander Header="Home Assistant Agent for VR (Linux)"
+                                   Description="Linux port of the Windows app by Antoni Czaplicki. MIT License."
+                                   IconSource="Home">
+                <ui:FASettingsExpander.Footer>
+                    <SelectableTextBlock x:Name="VersionText" VerticalAlignment="Center" Opacity="0.7" />
+                </ui:FASettingsExpander.Footer>
+                <ui:FASettingsExpanderItem>
+                    <StackPanel Orientation="Vertical" Margin="-12,0,0,0">
+                        <HyperlinkButton Content="Source Code (GitHub, Linux version)"
+                                         NavigateUri="https://github.com/WentTheFox/VR.HA-Agent-Linux" />
+                        <HyperlinkButton Content="Releases (Linux version)"
+                                         NavigateUri="https://github.com/WentTheFox/VR.HA-Agent-Linux/releases" />
+                        <HyperlinkButton Content="Home Assistant Integration"
+                                         NavigateUri="https://github.com/Antoni-Czaplicki/SteamVR.HA" />
+                        <HyperlinkButton Content="Original Windows app"
+                                         NavigateUri="https://github.com/Antoni-Czaplicki/SteamVR.HA-Agent" />
+                    </StackPanel>
+                </ui:FASettingsExpanderItem>
+            </ui:FASettingsExpander>
+            <HyperlinkButton Margin="0,8,0,0"
+                             Content="Send feedback about the Linux version"
+                             NavigateUri="https://github.com/WentTheFox/VR.HA-Agent-Linux/issues" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
