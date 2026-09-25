@@ -6,7 +6,7 @@
         <AssemblyName>steamvr-ha-agent</AssemblyName>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
-        <Version>0.3.0</Version>
+        <Version>0.3.1</Version>
         <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
         <!-- Avoids a libicu dependency, which matters when SteamVR launches us inside its runtime environment. -->
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

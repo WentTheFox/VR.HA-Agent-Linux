@@ -48,15 +48,27 @@ public sealed class SingleInstance : IDisposable
 
     private static void Signal(string activation)
     {
-        try
+        // The running instance may have only just started (e.g. the app menu launcher starts the service
+        // right before launching us), so give it a moment to open its socket.
+        for (var attempt = 0; ; attempt++)
         {
-            using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-            socket.Connect(new UnixDomainSocketEndPoint(SocketPath));
-            socket.Send(Encoding.UTF8.GetBytes(activation + "\n"));
-        }
-        catch (SocketException e)
-        {
-            Log.Debug($"Could not activate the running instance: {e.Message}");
+            try
+            {
+                using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                socket.Connect(new UnixDomainSocketEndPoint(SocketPath));
+                socket.Send(Encoding.UTF8.GetBytes(activation + "\n"));
+                return;
+            }
+            catch (SocketException e)
+            {
+                if (attempt >= 25)
+                {
+                    Log.Warn($"Could not activate the running instance: {e.Message}");
+                    return;
+                }
+
+                Thread.Sleep(200);
+            }
         }
     }
 

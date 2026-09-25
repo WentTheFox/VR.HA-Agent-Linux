@@ -64,18 +64,26 @@ install_app() {
     ln -sf "$APP_DIR/$APP_ID" "$BIN_DIR/$APP_ID"
     echo "Installed to $APP_DIR (command: $BIN_DIR/$APP_ID)"
 
-    # App menu entry. Runs the agent through its service when installed; launching it again just
-    # brings the running agent's window to the front.
+    # App menu entry. The launcher runs the agent through its service when installed; launching it
+    # again just brings the running agent's window to the front. (A script keeps the desktop entry's
+    # Exec line within what the spec allows.)
+    cat > "$APP_DIR/open.sh" <<LAUNCHER
+#!/bin/sh
+systemctl --user start $UNIT 2>/dev/null
+exec "$APP_DIR/$APP_ID" "\$@"
+LAUNCHER
+    chmod +x "$APP_DIR/open.sh"
+
     mkdir -p "$(dirname "$DESKTOP_FILE")"
     cat > "$DESKTOP_FILE" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Home Assistant Agent for SteamVR
 Comment=Connect SteamVR or Monado to Home Assistant
-Exec=sh -c 'systemctl --user start $UNIT 2>/dev/null; exec "$APP_DIR/$APP_ID"'
+Exec="$APP_DIR/open.sh"
 Icon=$APP_DIR/Assets/icon.png
 Terminal=false
-Categories=Utility;Game;
+Categories=Utility;
 StartupWMClass=$APP_ID
 DESKTOP
     if command -v update-desktop-database >/dev/null; then

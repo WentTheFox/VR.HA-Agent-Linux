@@ -128,23 +128,27 @@
 
             <TextBlock Classes="SettingsSectionHeader" Text="About" />
 
-            <ui:FASettingsExpander Header="Home Assistant Agent for SteamVR"
-                                   Description="© 2026. All rights reserved."
+            <ui:FASettingsExpander Header="Home Assistant Agent for SteamVR (Linux)"
+                                   Description="Linux port of the Windows app by Antoni Czaplicki. MIT License."
                                    IconSource="Home">
                 <ui:FASettingsExpander.Footer>
                     <SelectableTextBlock x:Name="VersionText" VerticalAlignment="Center" Opacity="0.7" />
                 </ui:FASettingsExpander.Footer>
                 <ui:FASettingsExpanderItem>
                     <StackPanel Orientation="Vertical" Margin="-12,0,0,0">
-                        <HyperlinkButton Content="Source Code (Github)"
+                        <HyperlinkButton Content="Source Code (GitHub, Linux version)"
                                          NavigateUri="https://github.com/WentTheFox/SteamVR.HA-Agent-Linux" />
+                        <HyperlinkButton Content="Releases (Linux version)"
+                                         NavigateUri="https://github.com/WentTheFox/SteamVR.HA-Agent-Linux/releases" />
                         <HyperlinkButton Content="Home Assistant Integration"
                                          NavigateUri="https://github.com/Antoni-Czaplicki/SteamVR.HA" />
+                        <HyperlinkButton Content="Original Windows app"
+                                         NavigateUri="https://github.com/Antoni-Czaplicki/SteamVR.HA-Agent" />
                     </StackPanel>
                 </ui:FASettingsExpanderItem>
             </ui:FASettingsExpander>
             <HyperlinkButton Margin="0,8,0,0"
-                             Content="Send feedback"
+                             Content="Send feedback about the Linux version"
                              NavigateUri="https://github.com/WentTheFox/SteamVR.HA-Agent-Linux/issues" />
         </StackPanel>
     </ScrollViewer>
