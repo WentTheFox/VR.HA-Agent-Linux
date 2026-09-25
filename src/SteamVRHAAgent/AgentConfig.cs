@@ -11,6 +11,14 @@ public class AgentConfig
     /// <summary>Address to listen on. "+" listens on all interfaces.</summary>
     public string BindAddress { get; set; } = "+";
 
+    /// <summary>Show only the tray icon (or a minimized window) on start.</summary>
+    public bool LaunchMinimized { get; set; }
+
+    /// <summary>Show a tray icon; minimizing the window hides it to the tray.</summary>
+    public bool EnableTray { get; set; } = true;
+
+    public bool AlwaysOnTop { get; set; }
+
     /// <summary>Which VR runtime(s) to connect to: "auto", "steamvr" or "monado".</summary>
     public string Runtime { get; set; } = "auto";
 
@@ -38,8 +46,8 @@ public class AgentConfig
     /// <summary>Optional explicit path to libmonado.so.</summary>
     public string? LibMonadoPath { get; set; }
 
-    public bool UseSteamVR => Runtime is "auto" or "steamvr";
-    public bool UseMonado => Runtime is "auto" or "monado";
+    [JsonIgnore] public bool UseSteamVR => Runtime is "auto" or "steamvr";
+    [JsonIgnore] public bool UseMonado => Runtime is "auto" or "monado";
 
     public bool VerboseLogging { get; set; }
 

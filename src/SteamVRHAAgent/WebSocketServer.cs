@@ -37,6 +37,7 @@ public sealed class WebSocketClient(WebSocket socket, string id, string remote)
 
 public sealed class WebSocketServer(string bindAddress, int port)
 {
+    private int _port = port;
     private const int MaxMessageBytes = 32 * 1024 * 1024; // base64 images can be large
 
     private readonly ConcurrentDictionary<string, WebSocketClient> _clients = new();
@@ -46,14 +47,33 @@ public sealed class WebSocketServer(string bindAddress, int port)
     public Action<WebSocketClient> ClientDisconnected { get; set; } = _ => { };
 
     public int ClientCount => _clients.Count;
+    public bool IsListening => _listener?.IsListening == true;
 
     public void Start(CancellationToken token)
     {
-        _listener = new HttpListener();
-        _listener.Prefixes.Add($"http://{bindAddress}:{port}/");
-        _listener.Start();
-        Log.Info($"WebSocket server listening on ws://{(bindAddress is "+" or "*" ? "0.0.0.0" : bindAddress)}:{port}/");
-        _ = AcceptLoop(_listener, token);
+        var listener = new HttpListener();
+        listener.Prefixes.Add($"http://{bindAddress}:{_port}/");
+        listener.Start();
+        _listener = listener;
+        Log.Info($"WebSocket server listening on ws://{(bindAddress is "+" or "*" ? "0.0.0.0" : bindAddress)}:{_port}/");
+        _ = AcceptLoop(listener, token);
+    }
+
+    /// <summary>Closes all connections and listens on a new port. Returns false if the port can't be used.</summary>
+    public async Task<bool> RestartAsync(int newPort, CancellationToken token)
+    {
+        await StopAsync();
+        _port = newPort;
+        try
+        {
+            Start(token);
+            return true;
+        }
+        catch (HttpListenerException e)
+        {
+            Log.Error($"Could not listen on port {newPort}: {e.Message}");
+            return false;
+        }
     }
 
     public async Task StopAsync()

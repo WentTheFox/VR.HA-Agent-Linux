@@ -157,7 +157,7 @@ public sealed class VRRuntime : IDisposable
     }
 
     /// <summary>Drops the connection; used when the runtime quits or disappears.</summary>
-    public void Disconnect(bool acknowledgeQuit)
+    public void Disconnect(bool acknowledgeQuit, bool raiseEvent = true)
     {
         if (!IsConnected) return;
         Advanced.Reset();
@@ -175,7 +175,7 @@ public sealed class VRRuntime : IDisposable
         IsConnected = false;
         _nextInitAttempt = Now + InitRetryInterval;
         Log.Info("Disconnected from OpenVR runtime");
-        Disconnected?.Invoke();
+        if (raiseEvent) Disconnected?.Invoke();
     }
 
     public void Dispose()

@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             x:Class="SteamVRHAAgent.UI.HomePage">
+    <ScrollViewer>
+        <StackPanel Spacing="4" Margin="16">
+            <ui:FAInfoBar x:Name="AutoStartInfoBar"
+                          IsOpen="False"
+                          Severity="Warning"
+                          Title="Auto-Start is disabled"
+                          Message="The app will not start automatically with SteamVR or at login. Enable it in the settings.">
+                <ui:FAInfoBar.ActionButton>
+                    <Button Content="Open Settings" Click="OpenSettings_OnClick" />
+                </ui:FAInfoBar.ActionButton>
+            </ui:FAInfoBar>
+
+            <ui:FASettingsExpander Header="VR Runtime Status"
+                                   Description="Whether SteamVR or Monado is running and connected to Agent"
+                                   IconSource="Games">
+                <ui:FASettingsExpander.Footer>
+                    <TextBlock x:Name="RuntimeStatusText" VerticalAlignment="Center" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander Header="WebSocket Server Status"
+                                   Description="Status of the WebSocket Server that communicates with Home Assistant"
+                                   IconSource="Globe">
+                <ui:FASettingsExpander.Footer>
+                    <TextBlock x:Name="WebSocketStatusText" VerticalAlignment="Center" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
+            <ui:FASettingsExpander x:Name="NotifyPluginCard"
+                                   Header="Notify Plugin Status"
+                                   Description="Status of Notify Plugin that lets you display advanced notifications in VR"
+                                   IconSource="Message">
+                <ui:FASettingsExpander.Footer>
+                    <TextBlock x:Name="NotifyPluginStatusText" VerticalAlignment="Center" />
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

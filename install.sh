@@ -15,6 +15,7 @@ APP_DIR="$DATA_DIR/app"
 BIN_DIR="$HOME/.local/bin"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT="$APP_ID.service"
+DESKTOP_FILE="${XDG_DATA_HOME:-$HOME/.local/share}/applications/$APP_ID.desktop"
 
 have_systemd() { command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; }
 
@@ -52,13 +53,34 @@ install_app() {
     ln -sf "$APP_DIR/$APP_ID" "$BIN_DIR/$APP_ID"
     echo "Installed to $APP_DIR (command: $BIN_DIR/$APP_ID)"
 
+    # App menu entry. Runs the agent through its service when installed; launching it again just
+    # brings the running agent's window to the front.
+    mkdir -p "$(dirname "$DESKTOP_FILE")"
+    cat > "$DESKTOP_FILE" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Home Assistant Agent for SteamVR
+Comment=Connect SteamVR or Monado to Home Assistant
+Exec=sh -c 'systemctl --user start $UNIT 2>/dev/null; exec "$APP_DIR/$APP_ID"'
+Icon=$APP_DIR/Assets/icon.png
+Terminal=false
+Categories=Utility;Game;
+StartupWMClass=$APP_ID
+DESKTOP
+    if command -v update-desktop-database >/dev/null; then
+        update-desktop-database -q "$(dirname "$DESKTOP_FILE")" || true
+    fi
+    echo "Installed app menu entry"
+
     if have_systemd; then
         mkdir -p "$UNIT_DIR"
         sed "s|@EXEC@|$APP_DIR/$APP_ID|" "$REPO_DIR/packaging/$UNIT" > "$UNIT_DIR/$UNIT"
         systemctl --user daemon-reload
         echo "Installed systemd user service $UNIT"
         if (( enable )); then
-            systemctl --user enable --now "$UNIT"
+            # reenable refreshes the install symlinks in case WantedBy changed.
+            systemctl --user reenable "$UNIT"
+            systemctl --user start "$UNIT"
             echo "Enabled $UNIT at login"
         elif (( was_active )); then
             systemctl --user start "$UNIT"
@@ -68,9 +90,9 @@ install_app() {
     cat <<EOF
 
 Next steps:
-  1. Run the agent: ./install.sh --enable starts it now and at every login, and it connects to
-     SteamVR or Monado whenever one of them is running. Without --enable, start it once while
-     SteamVR runs (systemctl --user start $UNIT) and SteamVR will launch it from then on.
+  1. Open "Home Assistant Agent for SteamVR" from your app menu. Its settings match the Windows app:
+     "Start with login" runs it at every login (same as ./install.sh --enable), and "Auto Start"
+     lets SteamVR launch it. It connects to SteamVR or Monado whenever one of them is running.
   2. Add the SteamVR integration in Home Assistant, pointing it at this machine on port 8077.
 
 Config: ${XDG_CONFIG_HOME:-$HOME/.config}/$APP_ID/config.json   Logs: journalctl --user -u $UNIT -f
@@ -83,7 +105,7 @@ uninstall_app() {
         rm -f -- "$UNIT_DIR/$UNIT"
         systemctl --user daemon-reload
     fi
-    rm -f -- "$BIN_DIR/$APP_ID"
+    rm -f -- "$BIN_DIR/$APP_ID" "$DESKTOP_FILE"
     rm -rf -- "$APP_DIR"
     # SteamVR ignores registered manifests whose file no longer exists.
     rm -f -- "$DATA_DIR/$APP_ID.vrmanifest" "$DATA_DIR/launch-from-steamvr.sh" "$DATA_DIR/icon.png"

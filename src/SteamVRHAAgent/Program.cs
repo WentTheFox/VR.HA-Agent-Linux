@@ -1,7 +1,9 @@
 using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using Avalonia;
 using SteamVRHAAgent;
+using SteamVRHAAgent.UI;
 
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
 
@@ -10,6 +12,8 @@ var configPath = Paths.DefaultConfigFile;
 int? portOverride = null;
 var verbose = false;
 var printConfig = false;
+var headless = false;
+var launchedBySteamVR = false;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -24,6 +28,7 @@ for (var i = 0; i < args.Length; i++)
                   -c, --config <path>     Config file (default: {Paths.DefaultConfigFile})
                   -p, --port <port>       Override the WebSocket port from the config
                   -v, --verbose           Verbose logging
+                      --headless          No window or tray icon (automatic without a display)
                       --print-config      Print the effective config and exit
                       --version           Print the version and exit
                   -h, --help              Show this help
@@ -45,7 +50,11 @@ for (var i = 0; i < args.Length; i++)
         case "--print-config":
             printConfig = true;
             break;
+        case "--headless":
+            headless = true;
+            break;
         case "--launched-by-steamvr":
+            launchedBySteamVR = true;
             break;
         default:
             Console.Error.WriteLine($"Unknown argument: {args[i]} (see --help)");
@@ -78,20 +87,15 @@ if (printConfig)
     return 0;
 }
 
-// Only one agent per user: SteamVR may try to launch us while the systemd service is already running.
-FileStream instanceLock;
-try
+// Only one agent per user. A second launch (app menu, SteamVR, terminal) activates the running one instead;
+// like the Windows app, a launch by SteamVR doesn't pop up the window.
+using var instance = SingleInstance.TryAcquire(
+    launchedBySteamVR ? SingleInstance.ActivationSteamVR : SingleInstance.ActivationShow);
+if (instance == null)
 {
-    Directory.CreateDirectory(Paths.RuntimeDir);
-    instanceLock = new FileStream(Paths.LockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-}
-catch (IOException)
-{
-    Log.Info("Another instance of the agent is already running; exiting.");
+    Log.Info("Another instance of the agent is already running; activated it and exiting.");
     return 0;
 }
-
-using var instanceLockHandle = instanceLock;
 
 Log.Info($"Home Assistant Agent for SteamVR {version} starting (config: {configPath})");
 NativeLibraries.Install(config.OpenVRLibraryPath);
@@ -105,6 +109,52 @@ catch (HttpListenerException e)
 {
     Log.Error($"Could not listen on port {config.Port}: {e.Message}");
     return 1;
+}
+
+var hasDisplay = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")) ||
+                 !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));
+if (!headless && hasDisplay)
+{
+    App.Agent = agent;
+    App.ConfigPath = configPath;
+    instance.Activated += activation =>
+    {
+        if (activation == SingleInstance.ActivationShow) App.Current.ShowMainWindow();
+    };
+
+    using var guiSigterm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx =>
+    {
+        ctx.Cancel = true;
+        App.Current.Exit();
+    });
+    using var guiSigint = PosixSignalRegistration.Create(PosixSignal.SIGINT, ctx =>
+    {
+        ctx.Cancel = true;
+        App.Current.Exit();
+    });
+    _ = agent.Exited.ContinueWith(_ => App.Current.Exit());
+
+    try
+    {
+        AppBuilder.Configure<App>()
+            .UsePlatformDetect()
+            .WithInterFont()
+            .With(new X11PlatformOptions { EnableSessionManagement = false })
+            .LogToTrace()
+            .StartWithClassicDesktopLifetime(args);
+
+        // Avalonia leaves its SynchronizationContext on this thread, but its dispatcher no longer runs, so
+        // awaiting here would post continuations nowhere and hang. Shut down on the thread pool instead.
+        SynchronizationContext.SetSynchronizationContext(null);
+        Log.Info("Shutting down");
+        await Task.Run(agent.StopAsync);
+        return 0;
+    }
+    catch (Exception e)
+    {
+        // No usable display after all: keep serving Home Assistant without the window.
+        Log.Error($"Could not start the user interface, continuing without it: {e.Message}");
+    }
 }
 
 var stop = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

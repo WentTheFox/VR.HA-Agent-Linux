@@ -53,6 +53,14 @@ public sealed class Agent : IDisposable
     /// <summary>Completes when the agent decides to exit on its own (runtime quit with ExitWithSteamVR).</summary>
     public Task Exited => _exited.Task;
 
+    public AgentConfig Config => _config;
+
+    /// <summary>"SteamVR", "Monado" or null.</summary>
+    public string? ConnectedRuntime => _vr.IsConnected ? "SteamVR" : _monado.IsConnected ? "Monado" : null;
+
+    public bool IsServerListening => _server.IsListening;
+    public int ClientCount => _server.ClientCount;
+
     public void Start()
     {
         _server.Start(_shutdown.Token);
@@ -95,6 +103,11 @@ public sealed class Agent : IDisposable
                 _runtimeProcessRunning = processes.AnyRuntime;
                 _wayVRRunning = processes.WayVR;
                 _vr.ConnectAllowed = _config.UseSteamVR && processes.SteamVR;
+
+                // The runtime setting can change at any time from the settings window.
+                if (_vr.IsConnected && !_config.UseSteamVR)
+                    await _vr.InvokeAsync(() => _vr.Disconnect(acknowledgeQuit: false, raiseEvent: false));
+                if (_monado.IsConnected && !_config.UseMonado) _monado.Close();
 
                 if (_vr.IsConnected)
                 {
@@ -150,6 +163,50 @@ public sealed class Agent : IDisposable
             Log.Info($"Exiting because {runtime} quit (exitWithSteamVR is enabled)");
             _exited.TrySetResult();
         }
+    }
+
+    #endregion
+
+    #region Settings actions
+
+    /// <summary>Tells clients about the new port (like the Windows app), then moves the server to it.</summary>
+    public async Task<bool> SetPortAsync(int port, int oldPort)
+    {
+        if (port != oldPort) _server.Broadcast(Serialize(new Event("port_changed", port.ToString())));
+        await Task.Delay(200); // let the event go out before connections close
+        return await _server.RestartAsync(port, _shutdown.Token);
+    }
+
+    public enum ManifestResult { Success, SteamVRNotRunning, FailedToRegister, FailedToSave }
+
+    public async Task<ManifestResult> RegisterManifestAsync()
+    {
+        if (!_vr.IsConnected) return ManifestResult.SteamVRNotRunning;
+        try
+        {
+            SteamVRManifest.Write();
+        }
+        catch (Exception e)
+        {
+            Log.Warn($"Could not write SteamVR manifest: {e.Message}");
+            return ManifestResult.FailedToSave;
+        }
+
+        var error = await _vr.InvokeAsync(() => _vr.RegisterManifest(Paths.ManifestFile, autoLaunch: true));
+        if (error == EVRApplicationError.None)
+        {
+            Log.Info($"Registered SteamVR auto-launch manifest: {Paths.ManifestFile}");
+            return ManifestResult.Success;
+        }
+
+        Log.Warn($"Could not register SteamVR manifest: {error}");
+        return ManifestResult.FailedToRegister;
+    }
+
+    /// <summary>Unregisters now if SteamVR is connected; otherwise it happens on the next connection.</summary>
+    public async Task UnregisterManifestAsync()
+    {
+        if (_vr.IsConnected) await _vr.InvokeAsync(UnregisterManifest);
     }
 
     #endregion

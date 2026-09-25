@@ -32,6 +32,16 @@ public sealed class MonadoBackend(string? libMonadoPath) : IDisposable
     /// <summary>Raised after an established connection is lost.</summary>
     public event Action? Disconnected;
 
+    /// <summary>Disconnects without raising <see cref="Disconnected"/> (the user switched runtimes).</summary>
+    public void Close()
+    {
+        lock (_lock)
+        {
+            CloseRoot();
+            _nextAttempt = DateTime.MinValue;
+        }
+    }
+
     /// <summary>Connects or disconnects to match whether the service is running. Call about once a second.</summary>
     public void Update(bool serviceRunning)
     {
@@ -41,7 +51,7 @@ public sealed class MonadoBackend(string? libMonadoPath) : IDisposable
             if (!serviceRunning)
             {
                 lost = _root != IntPtr.Zero;
-                Close();
+                CloseRoot();
                 _nextAttempt = DateTime.MinValue;
             }
             else if (_root == IntPtr.Zero)
@@ -52,7 +62,7 @@ public sealed class MonadoBackend(string? libMonadoPath) : IDisposable
             {
                 Log.Warn("Lost connection to Monado");
                 lost = true;
-                Close();
+                CloseRoot();
             }
         }
 
@@ -69,21 +79,44 @@ public sealed class MonadoBackend(string? libMonadoPath) : IDisposable
         {
             foreach (var process in Process.GetProcessesByName(name))
             {
-                using (process)
-                {
-                    try
-                    {
-                        return (process.Id, new FileInfo($"/proc/{process.Id}/exe").LinkTarget);
-                    }
-                    catch (Exception)
-                    {
-                        return (process.Id, null);
-                    }
-                }
+                using (process) return (process.Id, ExecutablePath(process.Id));
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The service's binary path. /proc/PID/exe is unreadable when the binary has file capabilities
+    /// (monado-service is usually installed with cap_sys_nice), but the command line stays readable.
+    /// </summary>
+    private static string? ExecutablePath(int pid)
+    {
+        try
+        {
+            var target = new FileInfo($"/proc/{pid}/exe").LinkTarget;
+            if (!string.IsNullOrEmpty(target)) return target;
+        }
+        catch (Exception)
+        {
+            // Fall through to the command line.
+        }
+
+        try
+        {
+            var argv0 = File.ReadAllText($"/proc/{pid}/cmdline").Split('\0')[0];
+            if (Path.IsPathRooted(argv0)) return argv0;
+            if (argv0.Contains('/')) return null; // relative to a working directory we can't see
+
+            // Bare name: resolve through PATH, like the shell that started it would have.
+            return (Environment.GetEnvironmentVariable("PATH") ?? "").Split(':')
+                .Select(dir => Path.Combine(dir, argv0))
+                .FirstOrDefault(File.Exists);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private void TryConnect()
@@ -124,7 +157,7 @@ public sealed class MonadoBackend(string? libMonadoPath) : IDisposable
         _nextAttempt = DateTime.UtcNow + RetryInterval;
     }
 
-    private void Close()
+    private void CloseRoot()
     {
         if (_root != IntPtr.Zero) _lib?.RootDestroy(ref _root);
         _root = IntPtr.Zero;
@@ -190,6 +223,6 @@ public sealed class MonadoBackend(string? libMonadoPath) : IDisposable
 
     public void Dispose()
     {
-        lock (_lock) Close();
+        lock (_lock) CloseRoot();
     }
 }
