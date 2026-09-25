@@ -30,19 +30,30 @@ public sealed class SingleInstance : IDisposable
         _ = AcceptLoop();
     }
 
-    /// <summary>Returns the instance if we are the first one, or null after activating the running one.</summary>
-    public static SingleInstance? TryAcquire(string activation)
+    /// <summary>
+    /// Returns the instance if we are the first one, or null after activating the running one. With a
+    /// <paramref name="wait"/> (used when restarting), keeps trying while the previous instance shuts down.
+    /// </summary>
+    public static SingleInstance? TryAcquire(string activation, TimeSpan wait = default)
     {
         Directory.CreateDirectory(Paths.RuntimeDir);
-        try
+        var deadline = DateTime.UtcNow + wait;
+        while (true)
         {
-            var lockFile = new FileStream(Paths.LockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            return new SingleInstance(lockFile);
-        }
-        catch (IOException)
-        {
-            Signal(activation);
-            return null;
+            try
+            {
+                var lockFile = new FileStream(Paths.LockFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                return new SingleInstance(lockFile);
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(200);
+            }
+            catch (IOException)
+            {
+                Signal(activation);
+                return null;
+            }
         }
     }
 

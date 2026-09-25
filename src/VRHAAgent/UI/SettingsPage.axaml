@@ -126,6 +126,18 @@
                 </ui:FASettingsExpander.Footer>
             </ui:FASettingsExpander>
 
+            <ui:FASettingsExpander Header="Hardware acceleration"
+                                   Description="Draw this window with the GPU. Leave off if the window ever turns blank or see-through, which GPU drawing can cause when VR runtimes restart. Takes effect after a restart."
+                                   IconSource="Games">
+                <ui:FASettingsExpander.Footer>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button x:Name="RestartButton" Classes="accent" Content="Restart now" IsVisible="False"
+                                Click="Restart_OnClick" />
+                        <ToggleSwitch x:Name="HardwareAccelerationToggle" IsCheckedChanged="HardwareAcceleration_OnToggled" />
+                    </StackPanel>
+                </ui:FASettingsExpander.Footer>
+            </ui:FASettingsExpander>
+
             <TextBlock Classes="SettingsSectionHeader" Text="About" />
 
             <ui:FASettingsExpander Header="Home Assistant Agent for VR (Linux)"

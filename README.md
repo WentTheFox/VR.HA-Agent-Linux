@@ -132,6 +132,7 @@ If you edit that file by hand, do it while the app is closed:
 | `launchMinimized`             | `false` | Start hidden in the tray (or minimized when the tray icon is off)                        |
 | `enableTray`                  | `true`  | Show the tray icon; minimizing hides the window to the tray                              |
 | `alwaysOnTop`                 | `false` | Keep the window above other windows                                                      |
+| `hardwareAcceleration`        | `false` | Draw the window with the GPU; off avoids blank/see-through windows when the GPU context is lost (e.g. VR runtimes restarting). Applies after a restart |
 | `runtime`                     | `"auto"`| `"auto"`, `"steamvr"` or `"monado"`: which runtimes to connect to                        |
 | `exitWithSteamVR`             | `false` | Exit when the runtime (SteamVR or Monado) quits                                          |
 | `startRuntimeCommand`         | `null`  | Shell command for `start_steamvr`. Default: SteamVR via Steam, or `systemctl --user start monado.service` when `runtime` is `"monado"` (e.g. set it to `envision -S`) |
@@ -158,7 +159,8 @@ sudo firewall-cmd --permanent --add-port=8077/tcp && sudo firewall-cmd --reload 
 - "Start with Windows" is "Start with login" (the systemd user service), and "Auto Start" doesn't ask
   where to save the manifest; it lives in `~/.local/share/vr-ha-agent/`.
 - The Notification editor page opens the editor in your browser instead of an embedded WebView.
-- Settings has two extra Linux-only entries: VR Runtime and Start runtime command.
+- Settings has three extra Linux-only entries: VR Runtime, Start runtime command, and Hardware
+  acceleration (off by default: the window is drawn on the CPU, which also keeps the agent off the GPU).
 - Advanced notifications are built in rather than provided by a separate plugin. The "Notify Plugin
   Status" card shows whether they can be shown right now, and the `notify_plugin_disabled` error means
   they're turned off in Settings.

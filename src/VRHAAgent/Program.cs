@@ -14,6 +14,7 @@ var verbose = false;
 var printConfig = false;
 var headless = false;
 var launchedBySteamVR = false;
+var waitForPrevious = false;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -52,6 +53,9 @@ for (var i = 0; i < args.Length; i++)
             break;
         case "--headless":
             headless = true;
+            break;
+        case "--wait-for-previous":
+            waitForPrevious = true;
             break;
         case "--launched-by-steamvr":
             launchedBySteamVR = true;
@@ -92,7 +96,8 @@ if (printConfig)
 // Only one agent per user. A second launch (app menu, SteamVR, terminal) activates the running one instead;
 // like the Windows app, a launch by SteamVR doesn't pop up the window.
 using var instance = SingleInstance.TryAcquire(
-    launchedBySteamVR ? SingleInstance.ActivationSteamVR : SingleInstance.ActivationShow);
+    launchedBySteamVR ? SingleInstance.ActivationSteamVR : SingleInstance.ActivationShow,
+    waitForPrevious ? TimeSpan.FromSeconds(15) : TimeSpan.Zero);
 if (instance == null)
 {
     Log.Info("Another instance of the agent is already running; activated it and exiting.");
@@ -119,6 +124,8 @@ if (!headless && hasDisplay)
 {
     App.Agent = agent;
     App.ConfigPath = configPath;
+    App.HardwareAccelerationActive = config.HardwareAcceleration;
+    App.CommandLineArgs = args.Where(a => a != "--wait-for-previous").ToArray();
     instance.Activated += activation =>
     {
         if (activation == SingleInstance.ActivationShow) App.Current.ShowMainWindow();
@@ -141,10 +148,10 @@ if (!headless && hasDisplay)
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
-            // Render the window on the CPU. It's small and mostly static, and GPU rendering can leave it blank
-            // or see-through when the GPU context is lost, which VR runtimes restarting can cause (seen with
-            // NVIDIA under XWayland). This also keeps the agent off the GPU while a VR app is using it.
-            .With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] })
+            // Without hardware acceleration the window is drawn on the CPU (see AgentConfig.HardwareAcceleration).
+            .With(config.HardwareAcceleration
+                ? new X11PlatformOptions()
+                : new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] })
             // Only Avalonia errors: its warnings include harmless noise such as X11 session management
             // ("SMLib/ICELib reported a new error") when the agent runs as a systemd service.
             .LogToTrace(Avalonia.Logging.LogEventLevel.Error)

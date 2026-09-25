@@ -30,6 +30,8 @@ public partial class SettingsPage : UserControl
         RuntimeComboBox.SelectedItem = RuntimeComboBox.Items.OfType<ComboBoxItem>()
             .FirstOrDefault(i => (string?)i.Tag == Config.Runtime) ?? RuntimeComboBox.Items[0];
         StartCommandBox.Text = Config.StartRuntimeCommand ?? "";
+        HardwareAccelerationToggle.IsChecked = Config.HardwareAcceleration;
+        RestartButton.IsVisible = Config.HardwareAcceleration != App.HardwareAccelerationActive;
         VersionText.Text = Paths.Version;
 
         _ = InitStartWithLoginToggle();
@@ -147,6 +149,16 @@ public partial class SettingsPage : UserControl
         Config.Runtime = runtime;
         App.Current.SaveConfig();
     }
+
+    private void HardwareAcceleration_OnToggled(object? sender, RoutedEventArgs e)
+    {
+        if (_isInitializing) return;
+        Config.HardwareAcceleration = HardwareAccelerationToggle.IsChecked == true;
+        App.Current.SaveConfig();
+        RestartButton.IsVisible = Config.HardwareAcceleration != App.HardwareAccelerationActive;
+    }
+
+    private void Restart_OnClick(object? sender, RoutedEventArgs e) => App.Current.Restart();
 
     private void SaveStartCommand_OnClick(object? sender, RoutedEventArgs e)
     {

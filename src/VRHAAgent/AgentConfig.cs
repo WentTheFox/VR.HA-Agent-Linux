@@ -19,6 +19,12 @@ public class AgentConfig
 
     public bool AlwaysOnTop { get; set; }
 
+    /// <summary>
+    /// Draw the window with the GPU. Off by default: GPU rendering can leave the window blank or see-through
+    /// when the GPU context is lost (seen with NVIDIA under XWayland while VR runtimes restart). Applies on restart.
+    /// </summary>
+    public bool HardwareAcceleration { get; set; }
+
     /// <summary>Which VR runtime(s) to connect to: "auto", "steamvr" or "monado".</summary>
     public string Runtime { get; set; } = "auto";
 
